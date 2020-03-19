@@ -6,11 +6,50 @@
 #include "stdio.h"
 #include "src/mongoose.h"
 
+//------------------------------------------------------------------
+// 
+//------------------------------------------------------------------
+struct bs_pkg_info {
+  // “yes” or “no”
+  char door_module[8];
+  char dev_id[32];
+  char soft_id[32];
+  char release_notes[256];
+};
+
+/**
+ * Upgrading status of single ECU
+**/
+struct bs_ecu_upgrade_stat {
+  char esti_time[64];
+  char start_time[32];
+  char time_stamp[32];
+  // "yes" or "no"
+  char door_module[8];
+  // "pending", "in progress", "failed", "success"
+  char status[16];
+  // raw percentage data, e.g., 0, 55, or 100
+  float progress_percent;
+};
+
+struct bs_context {
+  char dev_id[32];
+  char soft_id[32];
+  unsigned int door_module;
+  char* pkg_stat; // "no start", "downloading", "succ", "fail"
+  struct bs_ecu_upgrade_stat upgrade_stat;
+};
+
+//------------------------------------------------------------------
+// Global
+//------------------------------------------------------------------
 static const char *s_http_port = "8018";
 static struct mg_serve_http_opts s_http_server_opts;
 
 static char s_tdr_stat[512] = { 0 };
 static unsigned int i_tdr_stat_len = 0;
+
+static struct bs_context g_ctx;
 
 //------------------------------------------------------------------
 // File utilities
@@ -95,10 +134,8 @@ static void handle_pkg_stat(struct mg_connection *nc, int ev, void *p) {
   (void) ev;
   (void) p;
 
-  char * stat = "downloading";
-
   mg_printf(nc, "%s", "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n");
-  mg_printf_http_chunk(nc, "{ \"result\": %s }", stat);
+  mg_printf_http_chunk(nc, "{ \"result\": %s }", g_ctx.pkg_stat);
   mg_send_http_chunk(nc, "", 0); /* Send empty chunk, the end of response */
 }
 
@@ -166,6 +203,7 @@ static void handle_upload(struct mg_connection *nc, int ev, void *p) {
           return;
         }
         nc->user_data = (void *) data;
+        g_ctx.pkg_stat = "downloading";
       }
       break;
     }
@@ -189,6 +227,7 @@ static void handle_upload(struct mg_connection *nc, int ev, void *p) {
                 (long) ftell(data->fp));
       nc->flags |= MG_F_SEND_AND_CLOSE;
       fclose(data->fp);
+      g_ctx.pkg_stat = "succ";
       free(data);
       nc->user_data = NULL;
       break;
@@ -205,6 +244,10 @@ static void ev_handler(struct mg_connection *nc, int ev, void *ev_data) {
 //------------------------------------------------------------------
 // HTTP Thread
 //------------------------------------------------------------------
+void init_context(){
+  g_ctx.pkg_stat = "nostart";
+}
+
 int main(int argc, char *argv[]) {
   struct mg_mgr mgr;
   struct mg_connection *nc;
