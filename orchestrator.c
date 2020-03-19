@@ -12,11 +12,61 @@ static struct mg_serve_http_opts s_http_server_opts;
 static char s_tdr_stat[512] = { 0 };
 static unsigned int i_tdr_stat_len = 0;
 
+//------------------------------------------------------------------
+// File utilities
+//------------------------------------------------------------------
 struct file_writer_data {
   FILE *fp;
   size_t bytes_written;
 };
 
+static FILE * on_read(const char *filename)
+{
+    FILE *fp;
+
+    if ((fp = fopen(filename, "r")) == NULL)
+    {
+        printf("Could not open file '%s'\n", filename);
+        return NULL;
+    } else {
+        printf("Preparing to start reading file '%s'\n", filename);
+        return fp;
+    }
+}
+
+static FILE * on_write(const char *filename)
+{
+    FILE *fp;
+
+    if ((fp = fopen(filename, "w")) == NULL)
+    {
+        printf("Could not open destination file '%s'\n", filename);
+        return NULL;
+    } else {
+        printf("Preparing to start writing file '%s'\n", filename);
+        return fp;
+    }
+}
+
+static int on_read_data(FILE *fp, uint8_t *buffer, int len)
+{
+    int read_cn = -1;
+    if ((read_cn = fread(buffer, 1, len, fp)) > 0) {
+        return read_cn;
+    }
+    return -1;
+}
+
+static int on_write_data(FILE *fp, uint8_t *buffer, int len)
+{
+    fwrite(buffer, 1, len, fp);
+    return 1;
+}
+
+
+//------------------------------------------------------------------
+// HTTP Message handler
+//------------------------------------------------------------------
 // for live testing
 static void handle_test_live(struct mg_connection *nc, int ev, void *p) {
   (void) ev;
@@ -95,6 +145,7 @@ static void handle_tdr_run(struct mg_connection *nc, int ev, void *p) {
   pclose(fp);
 }
 
+// Http uploading file
 static void handle_upload(struct mg_connection *nc, int ev, void *p) {
   struct file_writer_data *data = (struct file_writer_data *) nc->user_data;
   struct mg_http_multipart_part *mp = (struct mg_http_multipart_part *) p;
@@ -103,7 +154,7 @@ static void handle_upload(struct mg_connection *nc, int ev, void *p) {
     case MG_EV_HTTP_PART_BEGIN: {
       if (data == NULL) {
         data = calloc(1, sizeof(struct file_writer_data));
-        data->fp = tmpfile();
+        data->fp = on_write("wpc.1.0.0");//TODO: read file name from context
         data->bytes_written = 0;
 
         if (data->fp == NULL) {
@@ -151,6 +202,9 @@ static void ev_handler(struct mg_connection *nc, int ev, void *ev_data) {
   }
 }
 
+//------------------------------------------------------------------
+// HTTP Thread
+//------------------------------------------------------------------
 int main(int argc, char *argv[]) {
   struct mg_mgr mgr;
   struct mg_connection *nc;
