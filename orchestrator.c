@@ -47,7 +47,6 @@ static const char *s_http_port = "8018";
 static struct mg_serve_http_opts s_http_server_opts;
 
 static char s_tdr_stat[512] = { 0 };
-static unsigned int i_tdr_stat_len = 0;
 
 static struct bs_context g_ctx;
 
@@ -82,7 +81,6 @@ static FILE * on_write(const char *filename)
         printf("Could not open destination file '%s'\n", filename);
         return NULL;
     } else {
-        printf("Preparing to start writing file '%s'\n", filename);
         return fp;
     }
 }
@@ -142,9 +140,10 @@ static void handle_pkg_stat(struct mg_connection *nc, int ev, void *p) {
 static void handle_tdr_stat(struct mg_connection *nc, int ev, void *p) {
   (void) ev;
   (void) p;
+  strcpy(s_tdr_stat, "succ"); // just for debug
 
   mg_printf(nc, "%s", "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n");
-  mg_printf_http_chunk(nc, "{ \"TDR status\": \"%s\"}", s_tdr_stat);
+  mg_printf_http_chunk(nc, "{ \"result\": \"%s\"}", s_tdr_stat);
   mg_send_http_chunk(nc, "", 0);
   return;
 }
@@ -160,24 +159,24 @@ static void handle_tdr_run(struct mg_connection *nc, int ev, void *p) {
   strcpy(cmd, "ls -la ");
   if ((fp = popen(cmd, "r")) != NULL) {
       mg_printf(nc, "%s", "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n");
-      mg_printf_http_chunk(nc, "{ \"TDR status\": \"Going to run\"}");
+      mg_printf_http_chunk(nc, "{ \"result\": \"succ\"}");
       mg_send_http_chunk(nc, "", 0);
   } else {
       mg_printf(nc, "%s", "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n");
-      mg_printf_http_chunk(nc, "{ \"TDR status\": \"Failed to run\"}");
+      mg_printf_http_chunk(nc, "{ \"result\": \"failed\"}");
       mg_send_http_chunk(nc, "", 0);
       return;
   }
 
-  while (fgets(output, sizeof(output)-1, fp) != NULL){
-      if ((i_tdr_stat_len + sizeof(output)) >= 512) {
-	sprintf(s_tdr_stat, "%s", output);
-	i_tdr_stat_len = strlen(s_tdr_stat);
-      } else {
-	sprintf(s_tdr_stat, "%s\n %s", s_tdr_stat, output);
-	i_tdr_stat_len = strlen(s_tdr_stat);
-      }
+  while (fgets(output, sizeof(output)-1, fp) != NULL) {
   }
+
+  // TODO: check s_tdr_stat to decide result
+  mg_printf(nc, "%s", "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n");
+  mg_printf_http_chunk(nc, "{ \"result\": \"succ\"}");
+  mg_send_http_chunk(nc, "", 0);
+
+  printf("CGW Orchstrator: tdr run success!\n");
 
   pclose(fp);
 }
@@ -198,6 +197,7 @@ static void handle_upload(struct mg_connection *nc, int ev, void *p) {
           mg_printf(nc, "%s",
                     "HTTP/1.1 500 Failed to open a file\r\n"
                     "Content-Length: 0\r\n\r\n");
+          mg_send_http_chunk(nc, "", 0);
           nc->flags |= MG_F_SEND_AND_CLOSE;
           free(data);
           return;
@@ -212,6 +212,7 @@ static void handle_upload(struct mg_connection *nc, int ev, void *p) {
         mg_printf(nc, "%s",
                   "HTTP/1.1 500 Failed to write to a file\r\n"
                   "Content-Length: 0\r\n\r\n");
+        mg_send_http_chunk(nc, "", 0);
         nc->flags |= MG_F_SEND_AND_CLOSE;
         return;
       }
@@ -223,8 +224,10 @@ static void handle_upload(struct mg_connection *nc, int ev, void *p) {
                 "HTTP/1.1 200 OK\r\n"
                 "Content-Type: text/plain\r\n"
                 "Connection: close\r\n\r\n"
-                "Written %ld of POST data to a temp file\n\n",
+                "Written %ld of POST data to a temp file successfully\n\n",
                 (long) ftell(data->fp));
+      mg_send_http_chunk(nc, "", 0);
+
       nc->flags |= MG_F_SEND_AND_CLOSE;
       fclose(data->fp);
       g_ctx.pkg_stat = "succ";
@@ -245,7 +248,7 @@ static void ev_handler(struct mg_connection *nc, int ev, void *ev_data) {
 // HTTP Thread
 //------------------------------------------------------------------
 void init_context(){
-  g_ctx.pkg_stat = "nostart";
+  g_ctx.pkg_stat = "no start";
 }
 
 int main(int argc, char *argv[]) {
