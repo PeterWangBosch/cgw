@@ -1,7 +1,7 @@
 PROG = orchestrator
 MODULE_CFLAGS=-DMG_ENABLE_THREADS -DMG_ENABLE_HTTP_STREAMING_MULTIPART -DMG_ENABLE_HTTP_WEBSOCKET=0
 
-SOURCES = $(PROG).c src/mongoose.c cJSON/cJSON.c
+SOURCES = $(PROG).c src/bs_core.c mongoose/mongoose.c cJSON/cJSON.c
 CFLAGS = -g -W -Wall -Werror -I../.. -Wno-unused-function $(CFLAGS_EXTRA) $(MODULE_CFLAGS)
 
 all: $(PROG)

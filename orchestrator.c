@@ -4,66 +4,9 @@
  */
 
 #include "stdio.h"
+#include "src/bs_core.h"
 #include "cJSON/cJSON.h"
-#include "src/mongoose.h"
-
-//------------------------------------------------------------------
-// 
-//------------------------------------------------------------------
-struct bs_pkg_info {
-  // “yes” or “no”
-  char door_module[8];
-  char dev_id[32];
-  char soft_id[32];
-  char release_notes[256];
-};
-
-struct bs_app_upgrade_stat {
-  char esti_time[32];
-  char start_time[32];
-  char time_stamp[32];
-  // deifferent app might have differnt status set 
-  char status[16];
-  // raw percentage data, e.g., 0, 55, or 100
-  float progress_percent;
-};
-
-#define BS_PKG_TYPE_INVALID 0
-#define BS_PKG_TYPE_CAN_ECU 1
-#define BS_PKG_TYPE_ETH_ECU 2
-#define BS_PKG_TYPE_ORCH 3
-const char *bs_pkg_stat_idle = "idle";
-const char *bs_pkg_stat_loading = "loading";
-const char *bs_pkg_stat_succ = "succ";
-const char *bs_pkg_stat_fail = "fail";
-struct bs_app_pkg_stat {
-  unsigned char type;
-  const char *stat;
-};
-
-struct bs_app_intaller_proxy {
-  unsigned int ip_addr;
-  unsigned int port;
-  void *thread_id;
-  bool thread_exit;
-  struct mg_connection *remote;
-};
-
-struct bs_device_app {
-  char dev_id[32];
-  char soft_id[32];
-  bool door_module; 
-  struct bs_app_pkg_stat pkg_stat;
-  struct bs_app_upgrade_stat upgrade_stat;
-  struct bs_app_intaller_proxy installer;
-};
-
-#define BS_MAX_DEVICE_APP_NUM 128
-struct bs_context {
-  struct mg_connection * tlc;
-  struct bs_device_app *loading_app;// TODO: support downloading in paralell
-  struct bs_device_app apps[BS_MAX_DEVICE_APP_NUM];
-};
+#include "mongoose/mongoose.h"
 
 //-----------------------------------------------------------------------
 // Protocol JSON parser
@@ -87,7 +30,6 @@ static struct mg_serve_http_opts s_http_server_opts;
 
 static char s_tdr_stat[512] = { 0 };
 
-static struct bs_context g_ctx;
 
 //------------------------------------------------------------------
 // File utilities
@@ -142,42 +84,6 @@ static int on_write_data(FILE *fp, uint8_t *buffer, int len)
 //------------------------------------------------------------------
 // Handle core data
 //------------------------------------------------------------------
-struct bs_device_app * core_find_app(struct bs_context *p_ctx, const char *id)
-{
-  struct bs_device_app * result = NULL;
-  int i;
-
-  for (i=0; i<BS_MAX_DEVICE_APP_NUM; i++) {
-    if (strcmp(p_ctx->apps[i].dev_id, id) == 0) {
-      result = &(p_ctx->apps[i]);
-      return result;
-    }
-  }
-  return result;
-}
-
-int core_api_new_pkg(struct bs_device_app *app, struct cJSON *payload)
-{
-  int result = 1;
-
-  switch(app->pkg_stat.type) {
-    case BS_PKG_TYPE_CAN_ECU:
-    case BS_PKG_TYPE_ORCH:
-      // local download & cache
-      app->pkg_stat.stat = bs_pkg_stat_loading;
-      break;
-    case BS_PKG_TYPE_ETH_ECU:
-      //TODO: start remote installer job
-      (void) payload;
-      break;
-    case BS_PKG_TYPE_INVALID:
-    default:
-      result = 0;
-      break;
-  }  
-
-  return result;
-}
 
 int core_api_tdr_run(struct bs_device_app *app, struct cJSON *payload)
 {
@@ -221,7 +127,6 @@ static void handle_pkg_new(struct mg_connection *nc, int ev, void *p) {
   struct http_message *hm = (struct http_message *) p;
   const char *result = api_resp_err_succ;
   const char *proto = api_resp_pkg_proto_http;
-  struct bs_device_app *app; 
 
   int parse_stat = JSON_INIT;
   //static char response[1024];
@@ -229,6 +134,8 @@ static void handle_pkg_new(struct mg_connection *nc, int ev, void *p) {
   struct cJSON * iterator = NULL;
   struct cJSON * payload = NULL;
   char * dev_id = NULL;
+
+  struct bs_core_request core_req;
 
   (void) ev;
   printf("Raw msg from TLC: %s\n", hm->body.p);
@@ -259,12 +166,16 @@ static void handle_pkg_new(struct mg_connection *nc, int ev, void *p) {
     result = api_resp_err_payload;
     goto last_step; 
   }
-  app = core_find_app(&g_ctx, dev_id);
-  if (core_api_new_pkg(app, payload)) {
-    g_ctx.loading_app = app;
-  } else {
+
+  // forward to core
+  bs_init_core_request(&core_req);
+  strcpy(core_req.dev_id, dev_id);
+  core_req.conn_id = (unsigned long) nc->user_data;
+  core_req.cmd = BS_CORE_REQ_PKG_NEW;
+  if (write(bs_get_core_ctx()->core_msg_sock[0], &core_req, sizeof(core_req)) < 0) {
+    printf("Writing core sock error!");
     result = api_resp_err_fail;
-    goto last_step;
+    goto last_step; 
   }
 
 last_step:
@@ -380,8 +291,8 @@ static void handle_upload(struct mg_connection *nc, int ev, void *p) {
       nc->flags |= MG_F_SEND_AND_CLOSE;
       fclose(data->fp);
 
-      g_ctx.loading_app->pkg_stat.stat = bs_pkg_stat_succ;
-      g_ctx.loading_app = NULL;
+      bs_get_core_ctx()->loading_app->pkg_stat.stat = bs_pkg_stat_succ;
+      bs_get_core_ctx()->loading_app = NULL;
 
       free(data);
       nc->user_data = NULL;
@@ -399,40 +310,6 @@ static void ev_handler(struct mg_connection *nc, int ev, void *ev_data) {
 //------------------------------------------------------------------
 // HTTP Thread
 //------------------------------------------------------------------
-void init_device_app(struct bs_device_app *app) {
-  int i;
-
-  for (i=0; i<32; i++) {
-    app->dev_id[0] = 0;
-    app->soft_id[0] = 0;
-  }
-  app->door_module = false;; 
-
-  app->pkg_stat.type = BS_PKG_TYPE_INVALID;
-  app->pkg_stat.stat = bs_pkg_stat_succ;
-
-  strcpy(app->upgrade_stat.esti_time, "00:00:00 1900-01-01");
-  strcpy(app->upgrade_stat.start_time, "00:00:00 1900-01-01");
-  strcpy(app->upgrade_stat.time_stamp, "00:00:00 1900-01-01");
-  for (i=0; i<16; i++) {
-    app->upgrade_stat.status[i] = 0;
-  }
-  app->upgrade_stat.progress_percent = 0;
-
-  app->installer.ip_addr = 0;
-  app->installer.port = 0;
-  app->installer.thread_id = NULL;
-  app->installer.thread_exit = false;
-}
-
-void init_context() {
-  int i;
-
-  g_ctx.tlc = NULL;
-  for(i=0; i<BS_MAX_DEVICE_APP_NUM; i++) {
-    init_device_app(g_ctx.apps + i);
-  }
-}
 
 int main(int argc, char *argv[]) {
   struct mg_mgr mgr;
@@ -444,6 +321,8 @@ int main(int argc, char *argv[]) {
 #endif
   (void) argc;
   (void) argv;
+
+  bs_core_init_ctx();
 
   mg_mgr_init(&mgr, NULL);
 
@@ -481,6 +360,8 @@ int main(int argc, char *argv[]) {
     exit(1);
   }
 
+  nc->user_data = (void *) bs_get_next_conn_id();
+
   // Register endpoints
   mg_register_http_endpoint(nc, "/upload", handle_upload MG_UD_ARG(NULL));
   mg_register_http_endpoint(nc, "/test/live", handle_test_live MG_UD_ARG(NULL));
@@ -494,6 +375,8 @@ int main(int argc, char *argv[]) {
   for (;;) {
     mg_mgr_poll(&mgr, 1000);
   }
+
+  bs_core_exit_ctx();
   mg_mgr_free(&mgr);
 
   return 0;
