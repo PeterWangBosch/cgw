@@ -39,7 +39,7 @@ extern const char *bs_pkg_stat_loading;
 extern const char *bs_pkg_stat_succ;
 extern const char *bs_pkg_stat_fail;
 struct bs_app_pkg_stat {
-  unsigned char type;
+  uint8_t type;
   const char *stat;
 };
 

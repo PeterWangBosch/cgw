@@ -101,6 +101,31 @@ struct bs_device_app * bs_core_find_app(const char *id)
   return result;
 }
 
+int bs_core_req_tdr_run(struct bs_core_request* req)
+{
+  struct bs_device_app *app = bs_core_find_app(req->dev_id);
+
+  if (app == NULL) {
+    return 0;
+  }
+
+  switch(app->pkg_stat.type) {
+    case BS_PKG_TYPE_CAN_ECU:
+    case BS_PKG_TYPE_ORCH:
+      // local download & cache
+      app->pkg_stat.stat = bs_pkg_stat_loading;
+      break;
+    case BS_PKG_TYPE_ETH_ECU:
+      //TODO: start remote installer job
+      break;
+    case BS_PKG_TYPE_INVALID:
+    default:
+      return 0;
+  }
+
+  return 1;
+}
+
 int bs_core_req_pkg_ready(struct bs_core_request* req)
 {
   struct bs_device_app *app = bs_core_find_app(req->dev_id);

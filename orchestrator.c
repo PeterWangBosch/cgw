@@ -4,9 +4,11 @@
  */
 
 #include "stdio.h"
-#include "src/bs_core.h"
+
 #include "cJSON/cJSON.h"
 #include "mongoose/mongoose.h"
+#include "src/bs_core.h"
+#include "src/file_utils.h"
 
 //-----------------------------------------------------------------------
 // Protocol JSON parser
@@ -31,55 +33,6 @@ static struct mg_serve_http_opts s_http_server_opts;
 static char s_tdr_stat[512] = { 0 };
 
 
-//------------------------------------------------------------------
-// File utilities
-//------------------------------------------------------------------
-struct file_writer_data {
-  FILE *fp;
-  size_t bytes_written;
-};
-
-static FILE * on_read(const char *filename)
-{
-    FILE *fp;
-
-    if ((fp = fopen(filename, "r")) == NULL)
-    {
-        printf("Could not open file '%s'\n", filename);
-        return NULL;
-    } else {
-        printf("Preparing to start reading file '%s'\n", filename);
-        return fp;
-    }
-}
-
-static FILE * on_write(const char *filename)
-{
-    FILE *fp;
-
-    if ((fp = fopen(filename, "w")) == NULL)
-    {
-        printf("Could not open destination file '%s'\n", filename);
-        return NULL;
-    } else {
-        return fp;
-    }
-}
-
-static int on_read_data(FILE *fp, uint8_t *buffer, int len)
-{
-    int read_cn = -1;
-    if ((read_cn = fread(buffer, 1, len, fp)) > 0) {
-        return read_cn;
-    }
-    return -1;
-}
-
-static int on_write_data(FILE *fp, uint8_t *buffer, int len)
-{
-    fwrite(buffer, 1, len, fp);
-    return 1;
-}
 
 //------------------------------------------------------------------
 // Handle core data
@@ -245,6 +198,7 @@ static void handle_tdr_run(struct mg_connection *nc, int ev, void *p) {
 static void handle_upload(struct mg_connection *nc, int ev, void *p) {
   struct file_writer_data *data = (struct file_writer_data *) nc->user_data;
   struct mg_http_multipart_part *mp = (struct mg_http_multipart_part *) p;
+  struct bs_core_request core_req;
 
   switch (ev) {
     case MG_EV_HTTP_PART_BEGIN: {
@@ -291,8 +245,17 @@ static void handle_upload(struct mg_connection *nc, int ev, void *p) {
       nc->flags |= MG_F_SEND_AND_CLOSE;
       fclose(data->fp);
 
-      bs_get_core_ctx()->loading_app->pkg_stat.stat = bs_pkg_stat_succ;
-      bs_get_core_ctx()->loading_app = NULL;
+      // forward to core
+      bs_init_core_request(&core_req);
+      strcpy(core_req.dev_id, bs_get_core_ctx()->loading_app->dev_id);
+      core_req.conn_id = (unsigned long) nc->user_data;
+      core_req.cmd = BS_CORE_REQ_PKG_READY;
+      if (write(bs_get_core_ctx()->core_msg_sock[0], &core_req, sizeof(core_req)) < 0) {
+        printf("Writing core sock error!");
+      }
+
+      //bs_get_core_ctx()->loading_app->pkg_stat.stat = bs_pkg_stat_succ;
+      //bs_get_core_ctx()->loading_app = NULL;
 
       free(data);
       nc->user_data = NULL;
