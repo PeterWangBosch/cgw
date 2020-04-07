@@ -90,6 +90,13 @@ static void handle_pkg_new(struct mg_connection *nc, int ev, void *p) {
 
   struct bs_core_request core_req;
 
+  if(!hm) {
+    printf("hm is null\n");
+    return;
+  }else{
+    printf("hm is not null\n");
+  }
+
   (void) ev;
   printf("Raw msg from TLC: %s\n", hm->body.p);
   if (!hm->body.p)
@@ -107,7 +114,9 @@ static void handle_pkg_new(struct mg_connection *nc, int ev, void *p) {
     if (strcmp(iterator->string, "deviceId") == 0) {
       parse_stat = JSON_HAS_DEVID;
       dev_id = iterator->valuestring;
+      break;
     }
+    iterator = iterator->next;
   }
   if (parse_stat != JSON_HAS_DEVID) {
     result = api_resp_err_devid;
@@ -125,8 +134,9 @@ static void handle_pkg_new(struct mg_connection *nc, int ev, void *p) {
   strcpy(core_req.dev_id, dev_id);
   core_req.conn_id = (unsigned long) nc->user_data;
   core_req.cmd = BS_CORE_REQ_PKG_NEW;
+  printf("Core request PKG_NEW!\n");
   if (write(bs_get_core_ctx()->core_msg_sock[0], &core_req, sizeof(core_req)) < 0) {
-    printf("Writing core sock error!");
+    printf("Writing core sock error!\n");
     result = api_resp_err_fail;
     goto last_step; 
   }
@@ -250,6 +260,7 @@ static void handle_upload(struct mg_connection *nc, int ev, void *p) {
       strcpy(core_req.dev_id, bs_get_core_ctx()->loading_app->dev_id);
       core_req.conn_id = (unsigned long) nc->user_data;
       core_req.cmd = BS_CORE_REQ_PKG_READY;
+      printf("Core request: PKG_READY\n");
       if (write(bs_get_core_ctx()->core_msg_sock[0], &core_req, sizeof(core_req)) < 0) {
         printf("Writing core sock error!");
       }
@@ -286,6 +297,7 @@ int main(int argc, char *argv[]) {
   (void) argv;
 
   bs_core_init_ctx();
+  mg_start_thread(bs_core_thread, NULL);
 
   mg_mgr_init(&mgr, NULL);
 
@@ -323,7 +335,7 @@ int main(int argc, char *argv[]) {
     exit(1);
   }
 
-  nc->user_data = (void *) bs_get_next_conn_id();
+//  nc->user_data = (void *) bs_get_next_conn_id();
 
   // Register endpoints
   mg_register_http_endpoint(nc, "/upload", handle_upload MG_UD_ARG(NULL));

@@ -86,6 +86,7 @@ void bs_init_core_request(struct bs_core_request*);
 void bs_init_device_app(struct bs_device_app *);
 void bs_core_init_ctx();
 void bs_core_exit_ctx();
+void *bs_core_thread(void *);
 
 #ifdef __cplusplus
 }

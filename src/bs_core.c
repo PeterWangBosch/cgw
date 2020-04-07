@@ -62,9 +62,10 @@ void bs_init_device_app(struct bs_device_app *app)
   app->installer.thread_exit = false;
 }
 
-void bs_core_init_ctx()
+void bs_core_init_ctx(const char * conf_file)
 {
   int i;
+  (void) conf_file;
 
   g_ctx.tlc = NULL;
 
@@ -74,10 +75,16 @@ void bs_core_init_ctx()
     perror("Opening socket pair");
     exit(1);
   }
-  signal(SIGTERM, signal_handler);
+//  signal(SIGTERM, signal_handler);
   signal(SIGINT, signal_handler);
 
-  for(i=0; i<BS_MAX_DEVICE_APP_NUM; i++) {
+  // TODO: just for NCT.
+  bs_init_device_app(g_ctx.apps);
+  strcpy(g_ctx.apps[0].dev_id, "xxx");
+  g_ctx.apps[0].pkg_stat.type = BS_PKG_TYPE_CAN_ECU;
+  g_ctx.apps[0].pkg_stat.stat = bs_pkg_stat_idle;
+
+  for(i=1; i<BS_MAX_DEVICE_APP_NUM; i++) {
     bs_init_device_app(g_ctx.apps + i);
   }
 }
@@ -150,7 +157,9 @@ int bs_core_req_pkg_new(struct bs_core_request* req)
     case BS_PKG_TYPE_CAN_ECU:
     case BS_PKG_TYPE_ORCH:
       // local download & cache
+      printf("core recv: pkg new\n");
       app->pkg_stat.stat = bs_pkg_stat_loading;
+      bs_get_core_ctx()->loading_app = app;
       break;
     case BS_PKG_TYPE_ETH_ECU:
       //TODO: start remote installer job
@@ -167,20 +176,23 @@ int bs_core_req_pkg_new(struct bs_core_request* req)
 //--------------------------------------------------------------
 //
 //--------------------------------------------------------------
-void *bs_core_thread(void *param) {
+void *bs_core_thread(void *param)
+{
   struct bs_core_request req = {0};
   (void) param;
 
   while (true) {
     if (g_received_signal != 0) {
-      sleep(10);
+      sleep(1);
       continue;
     }
 
     if (read(g_ctx.core_msg_sock[1], &req, sizeof(req)) < 0) {
-      perror("Reading worker sock");
+      perror("Error reading worker sock");
       continue;
     }
+
+    printf("Received signal : %d\n", req.cmd);    
 
     switch (req.cmd) {
       case BS_CORE_REQ_PKG_NEW:
