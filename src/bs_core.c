@@ -1,4 +1,5 @@
 #include "bs_core.h"
+#include "bs_tdr_job.h"
 
 const char *bs_pkg_stat_idle = "idle";
 const char *bs_pkg_stat_new = "new";
@@ -56,10 +57,10 @@ void bs_init_device_app(struct bs_device_app *app)
   }
   app->upgrade_stat.progress_percent = 0;
 
-  app->installer.ip_addr = 0;
-  app->installer.port = 0;
-  app->installer.thread_id = NULL;
-  app->installer.thread_exit = false;
+  app->job.ip_addr = 0;
+  app->job.port = 0;
+  app->job.thread_id = NULL;
+  app->job.thread_exit = false;
 }
 
 void bs_core_init_ctx(const char * conf_file)
@@ -119,8 +120,8 @@ int bs_core_req_tdr_run(struct bs_core_request* req)
   switch(app->pkg_stat.type) {
     case BS_PKG_TYPE_CAN_ECU:
     case BS_PKG_TYPE_ORCH:
-      // local download & cache
-      app->pkg_stat.stat = bs_pkg_stat_loading;
+      // start tdr running job
+      mg_start_thread(bs_tdr_job_thread, app);
       break;
     case BS_PKG_TYPE_ETH_ECU:
       //TODO: start remote installer job
@@ -132,6 +133,31 @@ int bs_core_req_tdr_run(struct bs_core_request* req)
 
   return 1;
 }
+
+int bs_core_req_tdr_stat_update(struct bs_core_request* req)
+{
+  struct bs_device_app *app = bs_core_find_app(req->dev_id);
+
+  if (app == NULL) {
+    return 0;
+  }
+
+  switch(app->pkg_stat.type) {
+    case BS_PKG_TYPE_CAN_ECU:
+    case BS_PKG_TYPE_ORCH:
+      app->upgrade_stat.progress_percent = req->payload.stat.progress_percent;
+      printf("Core: progress %f \n", app->upgrade_stat.progress_percent);
+      break;
+    case BS_PKG_TYPE_ETH_ECU:
+      break;
+    case BS_PKG_TYPE_INVALID:
+    default:
+      return 0;
+  }
+
+  return 1;
+}
+
 
 int bs_core_req_pkg_ready(struct bs_core_request* req)
 {
@@ -202,6 +228,10 @@ void *bs_core_thread(void *param)
         bs_core_req_pkg_ready(&req);
         break;
       case BS_CORE_REQ_TDR_RUN:
+        bs_core_req_tdr_run(&req);
+        break;
+      case BS_CORE_REQ_TDR_STAT_UPDATE:
+        bs_core_req_tdr_stat_update(&req);
         break;
       case BS_CORE_REQ_INVALID:
       default:

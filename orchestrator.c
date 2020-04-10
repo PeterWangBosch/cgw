@@ -38,28 +38,6 @@ static char s_tdr_stat[512] = { 0 };
 // Handle core data
 //------------------------------------------------------------------
 
-int core_api_tdr_run(struct bs_device_app *app, struct cJSON *payload)
-{
-  int result = 1;
-
-  switch(app->pkg_stat.type) {
-    case BS_PKG_TYPE_CAN_ECU:
-    case BS_PKG_TYPE_ORCH:
-      // local download & cache
-      app->pkg_stat.stat = bs_pkg_stat_loading;
-      break;
-    case BS_PKG_TYPE_ETH_ECU:
-      //TODO: start remote installer job
-      (void) payload;
-      break;
-    case BS_PKG_TYPE_INVALID:
-    default:
-      result = 0;
-      break;
-  }  
-
-  return result;
-}
 
 //------------------------------------------------------------------
 // HTTP Message handler
@@ -132,7 +110,6 @@ static void handle_pkg_new(struct mg_connection *nc, int ev, void *p) {
   // forward to core
   bs_init_core_request(&core_req);
   strcpy(core_req.dev_id, dev_id);
-  core_req.conn_id = (unsigned long) nc->user_data;
   core_req.cmd = BS_CORE_REQ_PKG_NEW;
   printf("Core request PKG_NEW!\n");
   if (write(bs_get_core_ctx()->core_msg_sock[0], &core_req, sizeof(core_req)) < 0) {
@@ -161,9 +138,15 @@ static void handle_pkg_stat(struct mg_connection *nc, int ev, void *p) {
 }
 
 static void handle_tdr_stat(struct mg_connection *nc, int ev, void *p) {
+  struct http_message *hm = (struct http_message *) p;
+//  const char *result = api_resp_err_succ;
+
   (void) ev;
-  (void) p;
-  strcpy(s_tdr_stat, "succ"); // just for debug
+  printf("handle_tdr_stat, Raw msg from TLC: %s\n", hm->body.p);
+  if (!hm->body.p)
+    return;
+
+  strcpy(s_tdr_stat, "succ"); // just for debug TODO: 
 
   mg_printf(nc, "%s", "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n");
   mg_printf_http_chunk(nc, "{ \"result\": \"%s\"}", s_tdr_stat);
@@ -172,36 +155,75 @@ static void handle_tdr_stat(struct mg_connection *nc, int ev, void *p) {
 }
 
 static void handle_tdr_run(struct mg_connection *nc, int ev, void *p) {
-  FILE *fp;
-  char cmd[256] = {0};
-  char output[300];
- 
+  struct http_message *hm = (struct http_message *) p;
+  const char *result = api_resp_err_succ;
+
+  int parse_stat = JSON_INIT;
+  //static char response[1024];
+  struct cJSON * root = NULL;
+  struct cJSON * iterator = NULL;
+  struct cJSON * payload = NULL;
+  char * dev_id = NULL;
+
+  struct bs_core_request core_req;
+
+  if(!hm) { // TODO: use ASSERT()
+    printf("hm is null\n");
+    return;
+  }
+
+  printf("TDR run\n");
+
   (void) ev;
-  (void) p;
+  printf("Raw msg from TLC: %s\n", hm->body.p);
+  if (!hm->body.p)
+    return;
 
-  strcpy(cmd, "ls -la ");
-  if ((fp = popen(cmd, "r")) != NULL) {
-      mg_printf(nc, "%s", "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n");
-      mg_printf_http_chunk(nc, "{ \"result\": \"succ\"}");
-      mg_send_http_chunk(nc, "", 0);
-  } else {
-      mg_printf(nc, "%s", "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n");
-      mg_printf_http_chunk(nc, "{ \"result\": \"failed\"}");
-      mg_send_http_chunk(nc, "", 0);
-      return;
+  root = cJSON_Parse(hm->body.p);
+  //TODO: check code of cJSON if memory leave when root is NULL
+  if (root == NULL) {
+    result = api_resp_err_fail;
+    goto last_step; 
   }
 
-  while (fgets(output, sizeof(output)-1, fp) != NULL) {
+  iterator = root->child;
+  while(iterator) {
+    if (strcmp(iterator->string, "deviceId") == 0) {
+      parse_stat = JSON_HAS_DEVID;
+      dev_id = iterator->valuestring;
+      break;
+    }
+    iterator = iterator->next;
+  }
+  if (parse_stat != JSON_HAS_DEVID) {
+    result = api_resp_err_devid;
+    goto last_step;
+  } 
+
+  payload = cJSON_GetObjectItem(root, "payload");
+  if (!payload) {
+    result = api_resp_err_payload;
+    goto last_step; 
   }
 
-  // TODO: check s_tdr_stat to decide result
+  // forward to core
+  bs_init_core_request(&core_req);
+  strcpy(core_req.dev_id, dev_id);
+  core_req.cmd = BS_CORE_REQ_TDR_RUN;
+  printf("Core request PKG_NEW!\n");
+  if (write(bs_get_core_ctx()->core_msg_sock[0], &core_req, sizeof(core_req)) < 0) {
+    printf("Writing core sock error!\n");
+    result = api_resp_err_fail;
+    goto last_step; 
+  }
+
+last_step:
+  // TODO: configuable to tftp, https
   mg_printf(nc, "%s", "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n");
-  mg_printf_http_chunk(nc, "{ \"result\": \"succ\"}");
-  mg_send_http_chunk(nc, "", 0);
-
-  printf("CGW Orchstrator: tdr run success!\n");
-
-  pclose(fp);
+  mg_printf_http_chunk(nc, "{ \"error\": \"%s\" }", result);
+  mg_send_http_chunk(nc, "", 0); /* Send empty chunk, the end of response */
+  // release memory
+  cJSON_Delete(root);
 }
 
 // Http uploading file

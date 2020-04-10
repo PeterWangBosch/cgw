@@ -40,10 +40,11 @@ extern const char *bs_pkg_stat_succ;
 extern const char *bs_pkg_stat_fail;
 struct bs_app_pkg_stat {
   uint8_t type;
+  const char *name;
   const char *stat;
 };
 
-struct bs_app_intaller_proxy {
+struct bs_app_intaller_job {
   unsigned int ip_addr;
   unsigned int port;
   void *thread_id;
@@ -57,7 +58,7 @@ struct bs_device_app {
   bool door_module; 
   struct bs_app_pkg_stat pkg_stat;
   struct bs_app_upgrade_stat upgrade_stat;
-  struct bs_app_intaller_proxy installer;
+  struct bs_app_intaller_job job;
 };
 
 #define BS_MAX_DEVICE_APP_NUM 128
@@ -69,15 +70,22 @@ struct bs_context {
   struct bs_device_app apps[BS_MAX_DEVICE_APP_NUM];
 };
 
+union bs_core_request_data {
+  struct bs_app_upgrade_stat stat;
+  char info[128];
+};
 #define BS_CORE_REQ_INVALID 0
 #define BS_CORE_REQ_PKG_NEW 1
 #define BS_CORE_REQ_PKG_READY 2
 #define BS_CORE_REQ_TDR_RUN 3
+#define BS_CORE_REQ_TDR_STAT_UPDATE 4
+#define BS_CORE_REQ_TDR_STAT_CHECK 5
 
 struct bs_core_request {
   unsigned long conn_id;
   unsigned int cmd;
   char dev_id[32];
+  union bs_core_request_data payload;
 };
 
 struct bs_context * bs_get_core_ctx();
@@ -86,6 +94,7 @@ void bs_init_core_request(struct bs_core_request*);
 void bs_init_device_app(struct bs_device_app *);
 void bs_core_init_ctx();
 void bs_core_exit_ctx();
+struct bs_device_app * bs_core_find_app(const char *id);
 void *bs_core_thread(void *);
 
 #ifdef __cplusplus
