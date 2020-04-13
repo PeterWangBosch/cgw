@@ -30,10 +30,6 @@ typedef int (* cJSONHookFn) (const cJSON *);
 static const char *s_http_port = "8018";
 static struct mg_serve_http_opts s_http_server_opts;
 
-static char s_tdr_stat[512] = { 0 };
-
-
-
 //------------------------------------------------------------------
 // Handle core data
 //------------------------------------------------------------------
@@ -76,7 +72,7 @@ static void handle_pkg_new(struct mg_connection *nc, int ev, void *p) {
   }
 
   (void) ev;
-  printf("Raw msg from TLC: %s\n", hm->body.p);
+  printf("/pkg/new raw msg from TLC: %s\n", hm->body.p);
   if (!hm->body.p)
     return;
 
@@ -139,19 +135,56 @@ static void handle_pkg_stat(struct mg_connection *nc, int ev, void *p) {
 
 static void handle_tdr_stat(struct mg_connection *nc, int ev, void *p) {
   struct http_message *hm = (struct http_message *) p;
-//  const char *result = api_resp_err_succ;
+
+  int parse_stat = JSON_INIT;
+  struct cJSON * root = NULL;
+  struct cJSON * iterator = NULL;
+  char * dev_id = NULL;
+  struct bs_device_app * app = NULL;
+  char * msg_buf = bs_get_safe_str_buf();
 
   (void) ev;
-  printf("handle_tdr_stat, Raw msg from TLC: %s\n", hm->body.p);
   if (!hm->body.p)
     return;
 
-  strcpy(s_tdr_stat, "succ"); // just for debug TODO: 
+  printf("/tdr/stat raw msg from TLC: %s\n", hm->body.p);
+  root = cJSON_Parse(hm->body.p);
+  //TODO: check code of cJSON if memory leave when root is NULL
+  if (root == NULL) {
+    sprintf(msg_buf, "{\"error\":\"%s\"", api_resp_err_fail);
+    goto last_step;
+  }
 
+  iterator = root->child;
+  while(iterator) {
+    if (strcmp(iterator->string, "deviceId") == 0) {
+      parse_stat = JSON_HAS_DEVID;
+      dev_id = iterator->valuestring;
+      break;
+    }
+    iterator = iterator->next;
+  }
+  if (parse_stat != JSON_HAS_DEVID) {
+    sprintf(msg_buf, "{\"error\":\"%s\"", api_resp_err_devid);
+    goto last_step;
+  }
+
+  app = bs_core_find_app(dev_id);
+  if (!app) {
+    sprintf(msg_buf, "{\"error\":\"%s\"", api_resp_err_devid);
+    goto last_step;
+  }
+
+  // response
+  bs_print_json_upgrade_stat(app, msg_buf);
+
+last_step:
+  // TODO: configuable to tftp, https
   mg_printf(nc, "%s", "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n");
-  mg_printf_http_chunk(nc, "{ \"result\": \"%s\"}", s_tdr_stat);
-  mg_send_http_chunk(nc, "", 0);
-  return;
+  mg_printf_http_chunk(nc, "{\"result\":%s}", msg_buf);
+  mg_send_http_chunk(nc, "", 0); /* Send empty chunk, the end of response */
+  // release memory
+  cJSON_Delete(root);
 }
 
 static void handle_tdr_run(struct mg_connection *nc, int ev, void *p) {

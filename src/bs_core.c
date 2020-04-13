@@ -25,6 +25,12 @@ unsigned long bs_get_next_conn_id()
   return ++g_ctx.next_conn_id;
 }
 
+char * bs_get_safe_str_buf()
+{
+  static char buf[1024];
+  return buf;
+}
+
 void bs_init_core_request(struct bs_core_request* req)
 {
   int i = 0;
@@ -44,7 +50,7 @@ void bs_init_device_app(struct bs_device_app *app)
     app->dev_id[0] = 0;
     app->soft_id[0] = 0;
   }
-  app->door_module = false;;
+  app->door_module = false;
 
   app->pkg_stat.type = BS_PKG_TYPE_INVALID;
   app->pkg_stat.stat = bs_pkg_stat_succ;
@@ -90,9 +96,73 @@ void bs_core_init_ctx(const char * conf_file)
   }
 }
 
-void bs_core_exit_ctx() {
+void bs_core_exit_ctx()
+{
   closesocket(g_ctx.core_msg_sock[0]);
   closesocket(g_ctx.core_msg_sock[1]);
+}
+
+unsigned int bs_print_json_upgrade_stat(struct bs_device_app *app, char* msg)
+{
+  unsigned int pc = 0; 
+  char buf[128];
+ 
+  // start {
+  msg[pc] = '{';
+  pc += 1;
+
+  // dev_id
+  sprintf(buf, "\"dev_id\":\"%s\",", app->dev_id);
+  strcpy(msg + pc, buf);
+  pc += strlen(buf);
+
+  // soft_id
+  sprintf(buf, "\"soft_id\":\"%s\",", app->soft_id);
+  strcpy(msg + pc, buf);
+  pc += strlen(buf);
+
+  // esti_time
+  sprintf(buf, "\"esti_time\":\"%s\",", app->upgrade_stat.esti_time);
+  strcpy(msg + pc, buf);
+  pc += strlen(buf);
+
+  // start_time
+  sprintf(buf, "\"start_time\":\"%s\",", app->upgrade_stat.start_time);
+  strcpy(msg + pc, buf);
+  pc += strlen(buf);
+
+  // time_stamp
+  sprintf(buf, "\"time_stamp\":\"%s\",", app->upgrade_stat.time_stamp);
+  strcpy(msg + pc, buf);
+  pc += strlen(buf);
+
+  // door_module
+  if (app->door_module) {
+    sprintf(buf, "\"door_module\":\"yes\",");
+  } else {
+    sprintf(buf, "\"door_module\":\"no\",");
+  }
+  strcpy(msg + pc, buf);
+  pc += strlen(buf);
+
+  // status
+  sprintf(buf, "\"status\":\"%s\",", app->upgrade_stat.status);
+  strcpy(msg + pc, buf);
+  pc += strlen(buf);
+
+  // progress
+  sprintf(buf, "\"progress_percent\":%d", (int)(app->upgrade_stat.progress_percent));
+  strcpy(msg + pc, buf);
+  pc += strlen(buf);
+
+  // end '}' for pkg status
+  msg[pc] = '}';
+  pc += 1;
+
+  // debug
+  printf("/tdr/stat: %s\n", msg);
+
+  return pc;  
 }
 
 struct bs_device_app * bs_core_find_app(const char *id)
