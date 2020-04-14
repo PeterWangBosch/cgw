@@ -39,7 +39,7 @@ void * bs_tdr_job_thread(void *param) {
     sleep(1);
   }
 
-  core_req.payload.stat.progress_percent = progress;
+  core_req.payload.stat.progress_percent = 100;
   if (write(bs_get_core_ctx()->core_msg_sock[0], &core_req, sizeof(core_req)) < 0) {
     printf("Writing core sock error!\n");
   }
