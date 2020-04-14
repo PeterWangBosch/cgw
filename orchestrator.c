@@ -56,7 +56,6 @@ static void handle_pkg_new(struct mg_connection *nc, int ev, void *p) {
   const char *proto = api_resp_pkg_proto_http;
 
   int parse_stat = JSON_INIT;
-  //static char response[1024];
   struct cJSON * root = NULL;
   struct cJSON * iterator = NULL;
   struct cJSON * payload = NULL;
@@ -71,10 +70,10 @@ static void handle_pkg_new(struct mg_connection *nc, int ev, void *p) {
     printf("hm is not null\n");
   }
 
-  (void) ev;
-  printf("/pkg/new raw msg from TLC: %s\n", hm->body.p);
-  if (!hm->body.p)
+  if (ev == MG_EV_CLOSE || !hm || !hm->body.p)
     return;
+
+  printf("/pkg/new raw msg from TLC: %s\n", hm->body.p);
 
   root = cJSON_Parse(hm->body.p);
   //TODO: check code of cJSON if memory leave when root is NULL
@@ -143,8 +142,7 @@ static void handle_tdr_stat(struct mg_connection *nc, int ev, void *p) {
   struct bs_device_app * app = NULL;
   char * msg_buf = bs_get_safe_str_buf();
 
-  (void) ev;
-  if (!hm->body.p)
+  if (ev == MG_EV_CLOSE || !hm || !hm->body.p)
     return;
 
   printf("/tdr/stat raw msg from TLC: %s\n", hm->body.p);
@@ -200,14 +198,9 @@ static void handle_tdr_run(struct mg_connection *nc, int ev, void *p) {
 
   struct bs_core_request core_req;
 
-  if(!hm) { // TODO: use ASSERT()
-    printf("hm is null\n");
+  if (ev == MG_EV_CLOSE || !hm || !hm->body.p)
     return;
-  }
 
-  printf("TDR run\n");
-
-  (void) ev;
   printf("Raw msg from TLC: %s\n", hm->body.p);
   if (!hm->body.p)
     return;
@@ -243,7 +236,7 @@ static void handle_tdr_run(struct mg_connection *nc, int ev, void *p) {
   bs_init_core_request(&core_req);
   strcpy(core_req.dev_id, dev_id);
   core_req.cmd = BS_CORE_REQ_TDR_RUN;
-  printf("Core request PKG_NEW!\n");
+  printf("Core request TDR_RUN!\n");
   if (write(bs_get_core_ctx()->core_msg_sock[0], &core_req, sizeof(core_req)) < 0) {
     printf("Writing core sock error!\n");
     result = api_resp_err_fail;
