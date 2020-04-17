@@ -44,16 +44,14 @@ static void handle_test_live(struct mg_connection *nc, int ev, void *p) {
   (void) ev;
   (void) p;
 
-  float result = 0.0000001;
   mg_printf(nc, "%s", "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n");
-  mg_printf_http_chunk(nc, "{ \"result\": %lf }", result);
+  mg_printf_http_chunk(nc, "{ \"result\": \"live\" }");
   mg_send_http_chunk(nc, "", 0); /* Send empty chunk, the end of response */
 }
 
 static void handle_pkg_new(struct mg_connection *nc, int ev, void *p) {
   struct http_message *hm = (struct http_message *) p;
   const char *result = api_resp_err_succ;
-  const char *proto = api_resp_pkg_proto_http;
 
   int parse_stat = JSON_INIT;
   struct cJSON * root = NULL;
@@ -84,7 +82,7 @@ static void handle_pkg_new(struct mg_connection *nc, int ev, void *p) {
 
   iterator = root->child;
   while(iterator) {
-    if (strcmp(iterator->string, "deviceId") == 0) {
+    if (strcmp(iterator->string, "dev_id") == 0) {
       parse_stat = JSON_HAS_DEVID;
       dev_id = iterator->valuestring;
       break;
@@ -114,9 +112,8 @@ static void handle_pkg_new(struct mg_connection *nc, int ev, void *p) {
   }
 
 last_step:
-  // TODO: configuable to tftp, https
   mg_printf(nc, "%s", "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n");
-  mg_printf_http_chunk(nc, "{ \"protocol\": %s, \"error\": %s }", proto, result);
+  mg_printf_http_chunk(nc, "{ \"result\": %s }", result);
   mg_send_http_chunk(nc, "", 0); /* Send empty chunk, the end of response */
   // release memory
   cJSON_Delete(root);
@@ -128,7 +125,7 @@ static void handle_pkg_stat(struct mg_connection *nc, int ev, void *p) {
   (void) p;
 
   mg_printf(nc, "%s", "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n");
-  mg_printf_http_chunk(nc, "{ \"result\": %s }", "succ");//g_ctx.pkg_stat);
+  mg_printf_http_chunk(nc, "{ \"stat\": %s }", "succ");//g_ctx.pkg_stat);
   mg_send_http_chunk(nc, "", 0); /* Send empty chunk, the end of response */
 }
 
@@ -155,7 +152,7 @@ static void handle_tdr_stat(struct mg_connection *nc, int ev, void *p) {
 
   iterator = root->child;
   while(iterator) {
-    if (strcmp(iterator->string, "deviceId") == 0) {
+    if (strcmp(iterator->string, "dev_id") == 0) {
       parse_stat = JSON_HAS_DEVID;
       dev_id = iterator->valuestring;
       break;
@@ -246,7 +243,7 @@ static void handle_tdr_run(struct mg_connection *nc, int ev, void *p) {
 last_step:
   // TODO: configuable to tftp, https
   mg_printf(nc, "%s", "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n");
-  mg_printf_http_chunk(nc, "{ \"error\": \"%s\" }", result);
+  mg_printf_http_chunk(nc, "{ \"result\": \"%s\" }", result);
   mg_send_http_chunk(nc, "", 0); /* Send empty chunk, the end of response */
   // release memory
   cJSON_Delete(root);
