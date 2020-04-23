@@ -45,10 +45,8 @@ struct bs_app_pkg_stat {
 };
 
 struct bs_app_intaller_job {
-  unsigned int ip_addr;
-  unsigned int port;
-  void *thread_id;
-  bool thread_exit;
+  char ip_addr[32];
+  unsigned int internal_id;
   struct mg_connection *remote;
 };
 
@@ -64,8 +62,10 @@ struct bs_device_app {
 #define BS_MAX_DEVICE_APP_NUM 128
 struct bs_context {
   unsigned long next_conn_id; 
-  sock_t core_msg_sock[2];
   struct mg_connection * tlc;
+  sock_t core_msg_sock[2];
+  sock_t eth_installer_msg_sock[2];
+  char eth_installer_port[8];
   struct bs_device_app *loading_app;// TODO: support downloading in paralell
   struct bs_device_app apps[BS_MAX_DEVICE_APP_NUM];
 };
@@ -92,12 +92,16 @@ struct bs_context * bs_get_core_ctx();
 char * bs_get_safe_str_buf();
 unsigned long bs_get_next_conn_id();
 
-void bs_init_device_app(struct bs_device_app *);
 void bs_core_init_ctx();
 void bs_core_exit_ctx();
+void bs_init_app_upgrade_stat(struct bs_app_upgrade_stat *);
+void bs_init_device_app(struct bs_device_app *);
 void bs_init_core_request(struct bs_core_request*);
 struct bs_device_app * bs_core_find_app(const char *);
 void *bs_core_thread(void *);
+
+struct bs_device_app * bs_core_eth_installer_up(struct mg_connection * nc);
+struct bs_device_app * bs_core_eth_installer_down(struct mg_connection * nc);
 
 unsigned int bs_print_json_upgrade_stat(struct bs_device_app *, char *);
 #ifdef __cplusplus

@@ -42,6 +42,19 @@ void bs_init_core_request(struct bs_core_request* req)
   }
 }
 
+void bs_init_app_upgrade_stat(struct bs_app_upgrade_stat * p_stat)
+{
+  int i = 0;
+
+  strcpy(p_stat->esti_time, "00:00:00 1900-01-01");
+  strcpy(p_stat->start_time, "00:00:00 1900-01-01");
+  strcpy(p_stat->time_stamp, "00:00:00 1900-01-01");
+  for (i=0; i<16; i++) {
+    p_stat->status[i] = 0;
+  }
+  p_stat->progress_percent = 0;
+}
+
 void bs_init_device_app(struct bs_device_app *app)
 {
   int i;
@@ -55,18 +68,11 @@ void bs_init_device_app(struct bs_device_app *app)
   app->pkg_stat.type = BS_PKG_TYPE_INVALID;
   app->pkg_stat.stat = bs_pkg_stat_succ;
 
-  strcpy(app->upgrade_stat.esti_time, "00:00:00 1900-01-01");
-  strcpy(app->upgrade_stat.start_time, "00:00:00 1900-01-01");
-  strcpy(app->upgrade_stat.time_stamp, "00:00:00 1900-01-01");
-  for (i=0; i<16; i++) {
-    app->upgrade_stat.status[i] = 0;
-  }
-  app->upgrade_stat.progress_percent = 0;
+  bs_init_app_upgrade_stat(&(app->upgrade_stat));
 
-  app->job.ip_addr = 0;
-  app->job.port = 0;
-  app->job.thread_id = NULL;
-  app->job.thread_exit = false;
+  memset(app->job.ip_addr, 0, 32);
+  app->job.internal_id = 0;
+  app->job.remote = NULL;
 }
 
 void bs_core_init_ctx(const char * conf_file)
@@ -79,11 +85,18 @@ void bs_core_init_ctx(const char * conf_file)
   g_ctx.next_conn_id = 0;
 
   if (mg_socketpair(g_ctx.core_msg_sock, SOCK_STREAM) == 0) {
-    perror("Opening socket pair");
+    perror("Opening socket pair error");
+    exit(1);
+  }
+
+  if (mg_socketpair(g_ctx.eth_installer_msg_sock, SOCK_STREAM) == 0) {
+    perror("Opening socket pair error");
     exit(1);
   }
 //  signal(SIGTERM, signal_handler);
-  signal(SIGINT, signal_handler);
+//  signal(SIGINT, signal_handler);
+
+  strcpy(g_ctx.eth_installer_port, "3003");
 
   // TODO: just for NCT.
   bs_init_device_app(g_ctx.apps);
@@ -99,7 +112,7 @@ void bs_core_init_ctx(const char * conf_file)
 void bs_core_exit_ctx()
 {
   closesocket(g_ctx.core_msg_sock[0]);
-  closesocket(g_ctx.core_msg_sock[1]);
+  closesocket(g_ctx.eth_installer_msg_sock[1]);
 }
 
 unsigned int bs_print_json_upgrade_stat(struct bs_device_app *app, char* msg)
@@ -175,6 +188,71 @@ struct bs_device_app * bs_core_find_app(const char *id)
       result = &(g_ctx.apps[i]);
       return result;
     }
+  }
+  return result;
+}
+
+// '0' is invalid internal ID
+static unsigned int gen_internal_id() {
+  static unsigned int i;
+  if (++i == 0)
+    return i = 1;
+
+  return i;
+}
+
+struct bs_device_app * bs_core_eth_installer_up(struct mg_connection * nc)
+{
+  struct bs_device_app * result = NULL;
+  char ip[24];
+  int i;
+
+  for (i=0; i<BS_MAX_DEVICE_APP_NUM; i++) {
+    // invalid device
+    if (g_ctx.apps[i].dev_id[0] == 0) {
+      continue;
+    }
+
+    // use {ip:port} as key to recognize installer
+    if (mg_sock_addr_to_str(&(nc->sa), 
+                            ip, 32,
+                            MG_SOCK_STRINGIFY_IP |
+                            MG_SOCK_STRINGIFY_PORT) <= 0) {
+      return NULL;
+    }
+
+    // TODO: make sure we have config file to obtain installer's ip 
+    if (strcmp(g_ctx.apps[i].job.ip_addr, ip) == 0) {
+      g_ctx.apps[i].job.internal_id = gen_internal_id();
+    } 
+  }
+  return result;
+}
+
+struct bs_device_app * bs_core_eth_installer_down(struct mg_connection * nc)
+{
+  struct bs_device_app * result = NULL;
+  char ip[24];
+  int i;
+
+  for (i=0; i<BS_MAX_DEVICE_APP_NUM; i++) {
+    // invalid device
+    if (g_ctx.apps[i].dev_id[0] == 0) {
+      continue;
+    }
+
+    // use {ip:port} as key to recognize installer
+    if (mg_sock_addr_to_str(&(nc->sa), 
+                            ip, 32,
+                            MG_SOCK_STRINGIFY_IP |
+                            MG_SOCK_STRINGIFY_PORT) <= 0) {
+      return NULL;
+    }
+
+    // TODO: make sure we have config file to obtain installer's ip 
+    if (strcmp(g_ctx.apps[i].job.ip_addr, ip) == 0) {
+      g_ctx.apps[i].job.internal_id = 0;
+    } 
   }
   return result;
 }

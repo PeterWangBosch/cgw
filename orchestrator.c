@@ -52,6 +52,7 @@ static void handle_test_live(struct mg_connection *nc, int ev, void *p) {
 static void handle_pkg_new(struct mg_connection *nc, int ev, void *p) {
   struct http_message *hm = (struct http_message *) p;
   const char *result = api_resp_err_succ;
+  (void) ev;
 
   int parse_stat = JSON_INIT;
   struct cJSON * root = NULL;
@@ -61,14 +62,7 @@ static void handle_pkg_new(struct mg_connection *nc, int ev, void *p) {
 
   struct bs_core_request core_req;
 
-  if(!hm) {
-    printf("hm is null\n");
-    return;
-  }else{
-    printf("hm is not null\n");
-  }
-
-  if (ev == MG_EV_CLOSE || !hm || !hm->body.p)
+  if (!hm || !hm->body.p)
     return;
 
   printf("/pkg/new raw msg from TLC: %s\n", hm->body.p);
