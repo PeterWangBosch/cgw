@@ -94,10 +94,25 @@ static void handle_pkg_new(struct mg_connection *nc, int ev, void *p) {
     goto last_step; 
   }
 
+  // find url
+  iterator = payload->child;
+  while(iterator) {
+    if (strcmp(iterator->string, "url") == 0) {
+      break;
+    }
+    iterator = iterator->next;
+  }
+
+  if (!iterator) {
+    result = api_resp_err_payload;
+    goto last_step;
+  }
+
   // forward to core
   bs_init_core_request(&core_req);
   strcpy(core_req.dev_id, dev_id);
   core_req.cmd = BS_CORE_REQ_PKG_NEW;
+  strcpy(core_req.payload.info, iterator->valuestring);
   printf("Core request PKG_NEW!\n");
   if (write(bs_get_core_ctx()->core_msg_sock[0], &core_req, sizeof(core_req)) < 0) {
     printf("Writing core sock error!\n");

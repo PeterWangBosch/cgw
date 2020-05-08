@@ -1,4 +1,5 @@
 #include "bs_core.h"
+#include "bs_eth_installer_job.h"
 #include "bs_tdr_job.h"
 
 const char *bs_pkg_stat_idle = "idle";
@@ -322,6 +323,7 @@ int bs_core_req_pkg_ready(struct bs_core_request* req)
 
 int bs_core_req_pkg_new(struct bs_core_request* req)
 {
+  struct bs_eth_installer_core_request inst_req;
   struct bs_device_app *app = bs_core_find_app(req->dev_id);
   if (app == NULL) {
     return 0;
@@ -337,6 +339,10 @@ int bs_core_req_pkg_new(struct bs_core_request* req)
       break;
     case BS_PKG_TYPE_ETH_ECU:
       //TODO: start remote installer job
+      bs_init_eth_installer_core_request(&inst_req, app);
+      inst_req.cmd = BS_ETH_INSTALLER_PKG_NEW;
+      inst_req.app = app;
+      strcpy(inst_req.payload.info, req->payload.info);
       break;
     case BS_PKG_TYPE_INVALID:
     default:
