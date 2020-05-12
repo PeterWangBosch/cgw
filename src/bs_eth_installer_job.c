@@ -118,7 +118,7 @@ void bs_eth_installer_req_pkg_new(struct bs_eth_installer_core_request *req, cha
   strcpy(msg + pc, resp_header);
   pc += strlen(resp_header);
 
-  strcpy(msg, "{");
+  strcpy(msg + pc, "{");
   pc += 1;
 
   //TODO: support multiple software
@@ -182,8 +182,14 @@ void bs_eth_installer_req_pkg_new(struct bs_eth_installer_core_request *req, cha
   msg[pc] = 0;
   pc += 1;
 
+  // the value of pc is the length
+  msg[0] = (char) (pc<< 24);
+  msg[1] = (char) (pc<< 16);
+  msg[2] = (char) (pc<< 8);
+  msg[3] = (char) (pc);
+
   printf("-------- raw json to eth installer:----------\n");
-  printf("%s", msg);
+  printf("%s\n", msg+4);
 
   app = req->app;
   if (app->job.remote == NULL) {

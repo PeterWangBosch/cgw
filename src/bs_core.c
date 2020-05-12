@@ -104,8 +104,12 @@ void bs_core_init_ctx(const char * conf_file)
   strcpy(g_ctx.apps[0].dev_id, "xxx");
   g_ctx.apps[0].pkg_stat.type = BS_PKG_TYPE_CAN_ECU;
   g_ctx.apps[0].pkg_stat.stat = bs_pkg_stat_idle;
+  bs_init_device_app(g_ctx.apps);
+  strcpy(g_ctx.apps[1].dev_id, "xxxx");
+  g_ctx.apps[1].pkg_stat.type = BS_PKG_TYPE_ETH_ECU;
+  g_ctx.apps[1].pkg_stat.stat = bs_pkg_stat_idle;
 
-  for(i=1; i<BS_MAX_DEVICE_APP_NUM; i++) {
+  for(i=2; i<BS_MAX_DEVICE_APP_NUM; i++) {
     bs_init_device_app(g_ctx.apps + i);
   }
 }
@@ -343,6 +347,11 @@ int bs_core_req_pkg_new(struct bs_core_request* req)
       inst_req.cmd = BS_ETH_INSTALLER_PKG_NEW;
       inst_req.app = app;
       strcpy(inst_req.payload.info, req->payload.info);
+      if (write(bs_get_core_ctx()->eth_installer_msg_sock[0], &inst_req, sizeof(inst_req)) < 0) {
+        printf("Writing eth instl sock error!\n");
+        return 0;
+      }
+
       break;
     case BS_PKG_TYPE_INVALID:
     default:

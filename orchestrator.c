@@ -9,6 +9,7 @@
 #include "mongoose/mongoose.h"
 #include "src/bs_core.h"
 #include "src/file_utils.h"
+#include "src/bs_eth_installer_job.h"
 
 //-----------------------------------------------------------------------
 // Protocol JSON parser
@@ -352,7 +353,7 @@ int main(int argc, char *argv[]) {
 
   bs_core_init_ctx();
   mg_start_thread(bs_core_thread, NULL);
-
+  mg_start_thread(bs_eth_installer_job_thread, bs_get_core_ctx());
   mg_mgr_init(&mgr, NULL);
 
   // in case we need listen to socket
