@@ -73,6 +73,7 @@ void bs_init_device_app(struct bs_device_app *app)
 
   memset(app->job.ip_addr, 0, 32);
   app->job.internal_id = 0;
+  app->job.internal_stat = 0;
   app->job.remote = NULL;
 }
 
@@ -231,6 +232,34 @@ struct bs_device_app * bs_core_eth_installer_up(struct mg_connection * nc)
       g_ctx.apps[i].job.internal_id = gen_internal_id();
     } 
   }
+  return result;
+}
+
+struct bs_device_app * find_app_by_nc(struct mg_connection * nc)
+{
+  struct bs_device_app * result = NULL;
+  char ip[24];
+  int i;
+
+  for (i=0; i<BS_MAX_DEVICE_APP_NUM; i++) {
+    // invalid device
+    if (g_ctx.apps[i].dev_id[0] == 0) {
+      continue;
+    }
+
+    // use {ip:port} as key to recognize installer
+    if (mg_sock_addr_to_str(&(nc->sa),
+                            ip, 32,
+                            MG_SOCK_STRINGIFY_IP |
+                            MG_SOCK_STRINGIFY_PORT) <= 0) {
+      return NULL;
+    }
+
+    if (strcmp(g_ctx.apps[i].job.ip_addr, ip) == 0) {
+      return &(g_ctx.apps[i]);
+    }
+  }
+
   return result;
 }
 

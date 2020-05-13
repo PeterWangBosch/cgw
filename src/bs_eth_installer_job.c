@@ -1,3 +1,5 @@
+#include "cJSON/cJSON.h"
+
 #include "bs_core.h"
 #include "bs_eth_installer_job.h"
 
@@ -13,9 +15,60 @@
 //  }
 //}
 
-unsigned int bs_eth_installer_msg_parse(char* json)
+static struct cJSON * find_json_child(struct cJSON * root, char * label)
 {
-  (void) json;
+  struct cJSON * iterator = NULL;
+
+  iterator = root->child;
+  while(iterator) {
+    if (strcmp(iterator->string, label) == 0) {
+      return iterator;
+    }
+    iterator = iterator->next;
+  }
+  return iterator;
+}
+
+#define ETH_JSON_OK 0
+#define ETH_JSON_WRONG 1
+#define ETH_JSON_NO_TASK 3
+#define ETH_JSON_NO_RESP 3
+unsigned int bs_eth_installer_msg_parse(char* json, struct bs_device_app * origin)
+{
+  int parse_stat = ETH_JSON_OK;
+  struct cJSON * root = NULL;
+  struct cJSON * child = NULL;
+  char * cmd = NULL;
+
+  root = cJSON_Parse(json);
+  //TODO: check code of cJSON if memory leave when root is NULL
+  if (root == NULL) {
+    parse_stat = ETH_JSON_WRONG;
+    goto last_step;
+  }
+
+  child = find_json_child(root, "task");
+  if (!child) {
+    parse_stat = ETH_JSON_NO_TASK;
+    goto last_step;
+  }
+  cmd = child->valuestring;
+
+  child = find_json_child(root, "response");
+  if (!child) {
+    parse_stat = ETH_JSON_NO_RESP;
+    goto last_step;
+  }
+
+  if (strcmp(child->valuestring, "1") == 0) {
+    if (strcmp(cmd, MSG_TRANSFER_PACKAGE_RESULT) == 0) {
+      origin->job.internal_stat = BS_ETH_INSTALLER_PKG_NEW;
+    }
+  } 
+last_step:
+  // release memory
+  printf("parse status: %d\n", parse_stat);
+  cJSON_Delete(root);
   return 0;
 }
 
@@ -51,7 +104,7 @@ unsigned int bs_eth_installer_core_msg_parse(struct bs_eth_installer_core_reques
 void * bs_eth_installer_job_thread(void *param)
 {
   struct mg_mgr mgr;
-  struct bs_context * p_ctx= (struct bs_context *) param;
+  struct bs_context * p_ctx = (struct bs_context *) param;
   struct bs_eth_installer_core_request req;
 
   //bs_init_app_upgrade_stat(&(app->upgrade_stat));
@@ -81,6 +134,7 @@ void * bs_eth_installer_job_thread(void *param)
 void bs_eth_installer_msg_handler(struct mg_connection *nc, int ev, void *p)
 {
   struct mbuf *io = &nc->recv_mbuf;
+  struct bs_device_app * app = NULL;
   unsigned int len = 0;
   (void) p;
 
@@ -94,7 +148,12 @@ void bs_eth_installer_msg_handler(struct mg_connection *nc, int ev, void *p)
       //TODO: parse JSON
 
       (void) len;
-      bs_eth_installer_msg_parse(&(io->buf[4]));
+      app = find_app_by_nc(nc);
+      if (app) {
+        bs_eth_installer_msg_parse(&(io->buf[4]), app);
+      } else {
+        printf("response from wrong installer\n");        
+      }
       mbuf_remove(io, io->len);       // Discard message from recv buffer
       break;
     case MG_EV_CLOSE:
@@ -105,11 +164,13 @@ void bs_eth_installer_msg_handler(struct mg_connection *nc, int ev, void *p)
   }
 }
 
+
 void bs_eth_installer_req_pkg_new(struct bs_eth_installer_core_request *req, char *msg)
 {
   struct bs_device_app * app = NULL;
   unsigned int pc = 0;
   char piece[64];
+  //TODO: 'node' and 'task' configurable
   static char *resp_header = "{\"node\":1,\"task\":\"TRANSFER_PACKAGE\",\"category\":0,\"payload\":{\"manifest\":[";
   // first 4 bytes for length
   pc += 4;

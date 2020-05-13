@@ -13,6 +13,7 @@ union bs_eth_installer_request_data {
   char info[128];
 };
 
+// status of self-installer
 #define BS_ETH_INSTALLER_REQ_NOP 0
 #define BS_ETH_INSTALLER_PKG_NEW 1
 #define BS_ETH_INSTALLER_PREPARE 2
@@ -29,6 +30,29 @@ struct bs_eth_installer_core_request {
   union bs_core_request_data payload;
 };
 
+// commands to eth self-installer
+#define MSG_TRANSFER_PACKAGE "TRANSFER_PACKAGE"
+#define MSG_TRANSFER_PACKAGE_RESULT "TRANSFER_PACKAGE_RESULT"
+#define MSG_REPORT_STATE "REPORT_STATE"
+#define MSG_REQUEST_STATE "REQUEST_STATE"
+#define MSG_REQUEST_STATE_RESULT "REQUEST_STATE_RESULT"
+#define MSG_PREPARE_ACTIVATION "PREPARE_ACTIVATION"
+#define MSG_ACTVATE "ACTIVATE"
+#define MSG_FINALIZE "FINALIZE"
+#define MSG_ROLLBACK "ROLLBACK"
+enum NodeId
+{
+  eCGW = 101,
+  eBDCM,
+  eDLP,
+  eIDCM,
+  eVSP,
+  eARC,
+  eDVR,
+  eTBOX,
+  eVDCM,
+  eHDMAP
+};
 void bs_init_eth_installer_core_request(struct bs_eth_installer_core_request * req,
                                         struct bs_device_app * app);
 
