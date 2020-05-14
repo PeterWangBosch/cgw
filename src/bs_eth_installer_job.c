@@ -29,11 +29,23 @@ static struct cJSON * find_json_child(struct cJSON * root, char * label)
   return iterator;
 }
 
+static int bs_eth_installer_resp_handler(char * cmd, struct cJSON * resp, struct bs_device_app * origin)
+{
+  if (strcmp(cmd, MSG_TRANSFER_PACKAGE_RESULT) == 0) {
+    origin->job.internal_stat = BS_ETH_INSTALLER_PKG_NEW;
+  } else if (strcmp(cmd, MSG_REQUEST_VERSIONS_RESULT) == 0) {
+    // TODO: compare response and recorded versions
+    (void) resp;
+  }
+  return 1;
+}
+
 #define ETH_JSON_OK 0
 #define ETH_JSON_WRONG 1
 #define ETH_JSON_NO_TASK 3
-#define ETH_JSON_NO_RESP 3
-unsigned int bs_eth_installer_msg_parse(char* json, struct bs_device_app * origin)
+#define ETH_JSON_NO_RESP 4
+#define ETH_JSON_WRONG_RESP 5
+unsigned int bs_eth_installer_msg_parse(char* json, struct bs_device_app * app)
 {
   int parse_stat = ETH_JSON_OK;
   struct cJSON * root = NULL;
@@ -60,11 +72,11 @@ unsigned int bs_eth_installer_msg_parse(char* json, struct bs_device_app * origi
     goto last_step;
   }
 
-  if (strcmp(child->valuestring, "1") == 0) {
-    if (strcmp(cmd, MSG_TRANSFER_PACKAGE_RESULT) == 0) {
-      origin->job.internal_stat = BS_ETH_INSTALLER_PKG_NEW;
-    }
-  } 
+  if (!bs_eth_installer_resp_handler(cmd, child, app)) {
+    parse_stat = ETH_JSON_WRONG_RESP;
+    goto last_step;
+  }
+
 last_step:
   // release memory
   printf("parse status: %d\n", parse_stat);
@@ -92,6 +104,7 @@ unsigned int bs_eth_installer_core_msg_parse(struct bs_eth_installer_core_reques
     case BS_ETH_INSTALLER_VER:
       break;
     case BS_ETH_INSTALLER_VERS:
+      bs_eth_installer_req_vers(req, msg);
       break;
     case BS_ETH_INSTALLER_ROLLBACK:
       break;
@@ -170,8 +183,8 @@ void bs_eth_installer_req_pkg_new(struct bs_eth_installer_core_request *req, cha
   struct bs_device_app * app = NULL;
   unsigned int pc = 0;
   char piece[64];
-  //TODO: 'node' and 'task' configurable
-  static char *resp_header = "{\"node\":1,\"task\":\"TRANSFER_PACKAGE\",\"category\":0,\"payload\":{\"manifest\":[";
+  //TODO: 'node' and 'task' configurable. For now, 109 means VDCM
+  static char *resp_header = "{\"node\":109,\"task\":\"TRANSFER_PACKAGE\",\"category\":0,\"payload\":{\"manifest\":[";
   // first 4 bytes for length
   pc += 4;
 
@@ -238,6 +251,41 @@ void bs_eth_installer_req_pkg_new(struct bs_eth_installer_core_request *req, cha
   // end of whole json
   strcpy(msg + pc, "}");
   pc += 1;
+
+  // to be safe
+  msg[pc] = 0;
+  pc += 1;
+
+  // the value of pc is the length
+  msg[0] = (char) (pc<< 24);
+  msg[1] = (char) (pc<< 16);
+  msg[2] = (char) (pc<< 8);
+  msg[3] = (char) (pc);
+
+  printf("-------- raw json to eth installer:----------\n");
+  printf("%s\n", msg+4);
+
+  app = req->app;
+  if (app->job.remote == NULL) {
+    printf("app data corrupted: %s", app->dev_id);
+    return;
+  }
+
+  mg_send(app->job.remote, msg, pc);
+}
+
+void bs_eth_installer_req_vers(struct bs_eth_installer_core_request *req, char *msg)
+{
+  struct bs_device_app * app = NULL;
+  unsigned int pc = 0;
+  //TODO: 'node' and 'task' configurable. For now, 109 means VDCM
+  static char *resp_header = "{\"node\":109,\"task\":\"MSG_REQUEST_VERSIONS\",\"category\":0,\"payload\":{}}";
+  // first 4 bytes for length
+  pc += 4;
+
+  // header
+  strcpy(msg + pc, resp_header);
+  pc += strlen(resp_header);
 
   // to be safe
   msg[pc] = 0;

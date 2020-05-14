@@ -384,6 +384,7 @@ struct bs_device_app * bs_core_eth_installer_down(struct mg_connection * nc)
 
 int bs_core_req_tdr_run(struct bs_core_request* req)
 {
+  struct bs_eth_installer_core_request inst_req;
   struct bs_device_app *app = bs_core_find_app(req->dev_id);
 
   if (app == NULL) {
@@ -398,6 +399,15 @@ int bs_core_req_tdr_run(struct bs_core_request* req)
       break;
     case BS_PKG_TYPE_ETH_ECU:
       //TODO: start remote installer job
+      bs_init_eth_installer_core_request(&inst_req, app);
+      inst_req.cmd = BS_ETH_INSTALLER_PKG_NEW;
+      inst_req.app = app;
+      strcpy(inst_req.payload.info, req->payload.info);
+      if (write(bs_get_core_ctx()->eth_installer_msg_sock[0], &inst_req, sizeof(inst_req)) < 0) {
+        printf("Writing eth instl sock error!\n");
+        return 0;
+      }
+
       break;
     case BS_PKG_TYPE_INVALID:
     default:
@@ -464,7 +474,7 @@ int bs_core_req_pkg_new(struct bs_core_request* req)
     case BS_PKG_TYPE_ETH_ECU:
       //TODO: start remote installer job
       bs_init_eth_installer_core_request(&inst_req, app);
-      inst_req.cmd = BS_ETH_INSTALLER_PKG_NEW;
+      inst_req.cmd = BS_ETH_INSTALLER_VERS;
       inst_req.app = app;
       strcpy(inst_req.payload.info, req->payload.info);
       if (write(bs_get_core_ctx()->eth_installer_msg_sock[0], &inst_req, sizeof(inst_req)) < 0) {

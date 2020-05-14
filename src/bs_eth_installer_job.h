@@ -33,6 +33,8 @@ struct bs_eth_installer_core_request {
 // commands to eth self-installer
 #define MSG_TRANSFER_PACKAGE "TRANSFER_PACKAGE"
 #define MSG_TRANSFER_PACKAGE_RESULT "TRANSFER_PACKAGE_RESULT"
+#define MSG_REQUEST_VERSIONS "REQUEST_VERSIONS"
+#define MSG_REQUEST_VERSIONS_RESULT "REQUEST_VERSIONS_RESULT"
 #define MSG_REPORT_STATE "REPORT_STATE"
 #define MSG_REQUEST_STATE "REQUEST_STATE"
 #define MSG_REQUEST_STATE_RESULT "REQUEST_STATE_RESULT"
@@ -60,6 +62,7 @@ void * bs_eth_installer_job_thread(void *);
 void bs_eth_installer_msg_handler(struct mg_connection *, int, void *);
 
 void bs_eth_installer_req_pkg_new(struct bs_eth_installer_core_request *, char *);
+void bs_eth_installer_req_vers(struct bs_eth_installer_core_request *, char *);
 
 #ifdef __cplusplus
 }
