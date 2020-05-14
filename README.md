@@ -5,6 +5,13 @@ a. Cross Compiling
 b. For Linux host
    make
 
+c. Cross Compile for Android:
+   We support this just for test, since we don't have CGW device right now.
+   1. Download & Extract Android NDK, for example, to ~/Android/Ndk
+   2. ~/Android/Ndk/ndk-build -C ./
+   3. The executables are generated to folder "libs/arm64-v8a"
+
+
 Run:
 a. As a socket server
   orchestrator -o
