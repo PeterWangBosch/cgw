@@ -10,6 +10,7 @@
 mkdir /vendor/bin/ -p
 mkdir /etc/orchestrator/ -p
 mkdir /var/orchestrator/ -p
+chmod 777 /var/orchestrator/
 
 cp orchestrator /vendor/bin/
 cp config.ini /etc/orchestrator/

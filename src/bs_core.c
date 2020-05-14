@@ -170,7 +170,7 @@ void bs_core_init_ctx(const char * conf_file)
   (void) conf_file;
 
  // char *filename="/vendor/etc/config.ini";
-  char *filename="src/config.ini";
+  char *filename="/etc/orchestrator/config.ini";
   g_ctx.tlc = NULL;
 
   g_ctx.next_conn_id = 0;
