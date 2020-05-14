@@ -96,6 +96,7 @@ unsigned long bs_get_next_conn_id();
 void bs_core_init_ctx();
 void bs_core_exit_ctx();
 void bs_init_app_upgrade_stat(struct bs_app_upgrade_stat *);
+void bs_init_app_config(const char * filename);
 void bs_init_device_app(struct bs_device_app *);
 void bs_init_core_request(struct bs_core_request*);
 struct bs_device_app * bs_core_find_app(const char *);

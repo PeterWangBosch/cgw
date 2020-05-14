@@ -1,6 +1,7 @@
 #include "bs_core.h"
 #include "bs_eth_installer_job.h"
 #include "bs_tdr_job.h"
+#include "file_utils.h"
 
 const char *bs_pkg_stat_idle = "idle";
 const char *bs_pkg_stat_new = "new";
@@ -76,12 +77,100 @@ void bs_init_device_app(struct bs_device_app *app)
   app->job.internal_stat = 0;
   app->job.remote = NULL;
 }
+void bs_init_app_config(const char * filename)
+{
+  FILE * fp =on_read(filename);
+  char * line = NULL;
+  size_t len = 0;
+  ssize_t read;
+  int str_len = 0;
+  int cur_app_index = 0;
+  char key[32] = { 0 };
+  char val[32] = { 0 };
+  while((read = getline(&line, &len, fp)) != -1) {
+    // TODO (tianjiao) : check and wirte to g_ctx.apps[cur_app_index]
+    memset(key, 0, 32);
+    memset(val, 0, 32);
+    str_len = strlen(line);
+    char * pos_app = strstr(line, "#");
+    if (pos_app)
+    {
+        cur_app_index++;
+    }
+    char * pos = strstr(line, ":");
+    if (pos == NULL)
+    {
+        free(line);
+        line = NULL;
+        continue;
+    }
 
+    strncpy(key, line, pos - line);
+    strncpy(val, pos + 1, str_len - (pos - line));
+    printf("%s:%s",key,val);
+    if (strcmp(key ,"dev_id") == 0)
+    {
+       strcpy((char *)g_ctx.apps[cur_app_index-1].dev_id, val);
+    }
+    if (strcmp(key ,"soft_id") == 0)
+    {
+       strcpy((char *)g_ctx.apps[cur_app_index-1].soft_id, val);
+    }
+    if (strcmp(key ,"door_module") == 0)
+    {
+       g_ctx.apps[cur_app_index-1].door_module = (bool)atoi(val);
+    }
+    if (strcmp(key ,"pkg_stat_type") == 0)
+    {
+       g_ctx.apps[cur_app_index-1].pkg_stat.type = (uint8_t)atoi(val);
+    }
+    if (strcmp(key ,"pkg_stat_stat") == 0)
+    {
+       g_ctx.apps[cur_app_index-1].pkg_stat.stat = val;
+    }
+    if (strcmp(key ,"pkg_name") == 0)
+    {
+      g_ctx.apps[cur_app_index-1].pkg_stat.name = val;
+    }
+    if (strcmp(key ,"upgrade_stat") == 0)
+    {
+       strcpy((char *)g_ctx.apps[cur_app_index-1].upgrade_stat.status, val);
+    }
+    if (strcmp(key ,"intaller_job_ip_addr") == 0)
+    {
+       strcpy((char *)g_ctx.apps[cur_app_index-1].job.ip_addr, val);
+    }
+    if (strcmp(key ,"esti_time") == 0)
+    {
+      strcpy((char *)g_ctx.apps[cur_app_index-1].upgrade_stat.esti_time , val);
+    }
+    if (strcmp(key ,"start_time") == 0)
+    {
+      strcpy((char *)g_ctx.apps[cur_app_index-1].upgrade_stat.start_time , val);
+    }
+    if (strcmp(key ,"time_stamp") == 0)
+    {
+      strcpy((char *)g_ctx.apps[cur_app_index-1].upgrade_stat.time_stamp , val);
+    }
+
+    if(strcmp(key ,"end") == 0)
+    {
+        free(line);
+        break;
+    }
+    free(line);
+    line = NULL;
+  }
+  fclose(fp);
+  fp = NULL;
+}
 void bs_core_init_ctx(const char * conf_file)
 {
   int i;
   (void) conf_file;
 
+ // char *filename="/vendor/etc/config.ini";
+  char *filename="src/config.ini";
   g_ctx.tlc = NULL;
 
   g_ctx.next_conn_id = 0;
@@ -113,6 +202,8 @@ void bs_core_init_ctx(const char * conf_file)
   for(i=2; i<BS_MAX_DEVICE_APP_NUM; i++) {
     bs_init_device_app(g_ctx.apps + i);
   }
+  //init from config.ini
+  bs_init_app_config(filename);
 }
 
 void bs_core_exit_ctx()
