@@ -31,11 +31,14 @@ static struct cJSON * find_json_child(struct cJSON * root, char * label)
 
 static int bs_eth_installer_resp_handler(char * cmd, struct cJSON * resp, struct bs_device_app * origin)
 {
+  (void) resp;
   if (strcmp(cmd, MSG_TRANSFER_PACKAGE_RESULT) == 0) {
     origin->job.internal_stat = BS_ETH_INSTALLER_PKG_NEW;
   } else if (strcmp(cmd, MSG_REQUEST_VERSIONS_RESULT) == 0) {
     // TODO: compare response and recorded versions
-    (void) resp;
+    
+    // insert to que of eth installer 
+    bs_core_req_eth_instl_prepare(origin);
   }
   return 1;
 }
@@ -102,6 +105,9 @@ unsigned int bs_eth_installer_core_msg_parse(struct bs_eth_installer_core_reques
       bs_eth_installer_req_pkg_new(req, msg);
       break;
     case BS_ETH_INSTALLER_VER:
+      break;
+    case BS_ETH_INSTALLER_PREPARE:
+      bs_eth_installer_prepare(req, msg);
       break;
     case BS_ETH_INSTALLER_VERS:
       bs_eth_installer_req_vers(req, msg);
@@ -280,6 +286,41 @@ void bs_eth_installer_req_vers(struct bs_eth_installer_core_request *req, char *
   unsigned int pc = 0;
   //TODO: 'node' and 'task' configurable. For now, 109 means VDCM
   static char *resp_header = "{\"node\":109,\"task\":\"MSG_REQUEST_VERSIONS\",\"category\":0,\"payload\":{}}";
+  // first 4 bytes for length
+  pc += 4;
+
+  // header
+  strcpy(msg + pc, resp_header);
+  pc += strlen(resp_header);
+
+  // to be safe
+  msg[pc] = 0;
+  pc += 1;
+
+  // the value of pc is the length
+  msg[0] = (char) (pc<< 24);
+  msg[1] = (char) (pc<< 16);
+  msg[2] = (char) (pc<< 8);
+  msg[3] = (char) (pc);
+
+  printf("-------- raw json to eth installer:----------\n");
+  printf("%s\n", msg+4);
+
+  app = req->app;
+  if (app->job.remote == NULL) {
+    printf("app data corrupted: %s", app->dev_id);
+    return;
+  }
+
+  mg_send(app->job.remote, msg, pc);
+}
+
+void bs_eth_installer_prepare(struct bs_eth_installer_core_request *req, char *msg)
+{
+  struct bs_device_app * app = NULL;
+  unsigned int pc = 0;
+  //TODO: 'node' and 'task' configurable. For now, 109 means VDCM
+  static char *resp_header = "{\"node\":109,\"task\":\"MSG_PREPARE_ACTIVATION\",\"category\":0,\"payload\":{\"url\":\"\"}}";
   // first 4 bytes for length
   pc += 4;
 

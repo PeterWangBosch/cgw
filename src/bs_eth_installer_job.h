@@ -63,6 +63,7 @@ void bs_eth_installer_msg_handler(struct mg_connection *, int, void *);
 
 void bs_eth_installer_req_pkg_new(struct bs_eth_installer_core_request *, char *);
 void bs_eth_installer_req_vers(struct bs_eth_installer_core_request *, char *);
+void bs_eth_installer_prepare(struct bs_eth_installer_core_request *, char *);
 
 #ifdef __cplusplus
 }

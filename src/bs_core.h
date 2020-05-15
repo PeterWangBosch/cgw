@@ -100,11 +100,12 @@ void bs_init_app_config(const char * filename);
 void bs_init_device_app(struct bs_device_app *);
 void bs_init_core_request(struct bs_core_request*);
 struct bs_device_app * bs_core_find_app(const char *);
-struct bs_device_app * find_app_by_nc(struct mg_connection * nc);
+struct bs_device_app * find_app_by_nc(struct mg_connection *);
 void *bs_core_thread(void *);
 
-struct bs_device_app * bs_core_eth_installer_up(struct mg_connection * nc);
-struct bs_device_app * bs_core_eth_installer_down(struct mg_connection * nc);
+struct bs_device_app * bs_core_eth_installer_up(struct mg_connection *);
+struct bs_device_app * bs_core_eth_installer_down(struct mg_connection *);
+int bs_core_req_eth_instl_prepare(struct bs_device_app *);
 
 unsigned int bs_print_json_upgrade_stat(struct bs_device_app *, char *);
 #ifdef __cplusplus
