@@ -89,6 +89,12 @@ static void handle_pkg_new(struct mg_connection *nc, int ev, void *p) {
     goto last_step;
   } 
 
+  struct bs_device_app * app = bs_core_find_app(dev_id);
+  if (!app) {
+    result = api_resp_err_devid;
+    goto last_step;
+  }
+
   payload = cJSON_GetObjectItem(root, "payload");
   if (!payload) {
     result = api_resp_err_payload;
@@ -123,7 +129,11 @@ static void handle_pkg_new(struct mg_connection *nc, int ev, void *p) {
 
 last_step:
   mg_printf(nc, "%s", "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n");
-  mg_printf_http_chunk(nc, "{ \"result\": %s }", result);
+  if (app && app->pkg_stat.type == BS_PKG_TYPE_ETH_ECU) {
+    mg_printf_http_chunk(nc, "{ \"result\": \"%s\", \"upload\": \"yes\" }", result);
+  } else {
+    mg_printf_http_chunk(nc, "{ \"result\": \"%s\", \"upload\": \"no\" }", result);
+  }
   mg_send_http_chunk(nc, "", 0); /* Send empty chunk, the end of response */
   // release memory
   cJSON_Delete(root);
