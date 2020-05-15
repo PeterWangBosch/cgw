@@ -84,6 +84,7 @@ void bs_init_app_config(const char * filename)
   char *line = (char *)malloc(1024);
   int str_len = 0;
   int cur_app_index = 0;
+  int offset = 1;
   char key[32] = { 0 };
   char val[32] = { 0 };
   while(!feof(fp)) {
@@ -103,8 +104,12 @@ void bs_init_app_config(const char * filename)
     {
         continue;
     }
+    if (line[str_len - 1] == '\n')
+    {
+        offset = 2;
+    }
     strncpy(key, line, pos - line);
-    strncpy(val, pos + 1, str_len - (pos - line));
+    strncpy(val, pos + 1, str_len - (pos - line) - offset);
     if (strcmp(key ,"dev_id") == 0)
     {
        strcpy((char *)g_ctx.apps[cur_app_index-1].dev_id, val);
