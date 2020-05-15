@@ -3,6 +3,7 @@
 #include "bs_tdr_job.h"
 #include "file_utils.h"
 
+
 const char *bs_pkg_stat_idle = "idle";
 const char *bs_pkg_stat_new = "new";
 const char *bs_pkg_stat_loading = "loading";
@@ -79,18 +80,19 @@ void bs_init_device_app(struct bs_device_app *app)
 }
 void bs_init_app_config(const char * filename)
 {
-  FILE * fp =on_read(filename);
-  char * line = NULL;
-  size_t len = 0;
-  ssize_t read;
+  FILE * fp = on_read(filename);
+  char *line = (char *)malloc(1024);
   int str_len = 0;
   int cur_app_index = 0;
+  int offset = 1;
   char key[32] = { 0 };
   char val[32] = { 0 };
-  while((read = getline(&line, &len, fp)) != -1) {
+  while(!feof(fp)) {
     // TODO (tianjiao) : check and wirte to g_ctx.apps[cur_app_index]
+    memset(line, 0, 1024);
     memset(key, 0, 32);
     memset(val, 0, 32);
+    fgets(line, 100, fp);
     str_len = strlen(line);
     char * pos_app = strstr(line, "#");
     if (pos_app)
@@ -100,14 +102,14 @@ void bs_init_app_config(const char * filename)
     char * pos = strstr(line, ":");
     if (pos == NULL)
     {
-        free(line);
-        line = NULL;
         continue;
     }
-
+    if (line[str_len - 1] == '\n')
+    {
+        offset = 2;
+    }
     strncpy(key, line, pos - line);
-    strncpy(val, pos + 1, str_len - (pos - line));
-    printf("%s:%s",key,val);
+    strncpy(val, pos + 1, str_len - (pos - line) - offset);
     if (strcmp(key ,"dev_id") == 0)
     {
        strcpy((char *)g_ctx.apps[cur_app_index-1].dev_id, val);
@@ -155,12 +157,11 @@ void bs_init_app_config(const char * filename)
 
     if(strcmp(key ,"end") == 0)
     {
-        free(line);
         break;
     }
-    free(line);
-    line = NULL;
   }
+  free(line);
+  line = NULL;
   fclose(fp);
   fp = NULL;
 }
