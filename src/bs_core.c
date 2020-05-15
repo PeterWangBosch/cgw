@@ -432,6 +432,22 @@ int bs_core_req_eth_instl_prepare(struct bs_device_app * app)
   return 1;
 }
 
+int bs_core_req_eth_instl_act(struct bs_device_app * app)
+{
+  struct bs_eth_installer_core_request inst_req;
+  bs_init_eth_installer_core_request(&inst_req, app);
+  inst_req.cmd = BS_ETH_INSTALLER_ACT;
+  inst_req.app = app;
+  inst_req.payload.info[0] = 0; // empty string
+  if (write(bs_get_core_ctx()->eth_installer_msg_sock[0], &inst_req, sizeof(inst_req)) < 0) {
+    printf("bs_core_req_eth_instl_prepare: Writing eth instl sock error! \n");
+    return 0;
+  }
+
+  return 1;
+}
+
+
 int bs_core_req_tdr_stat_update(struct bs_core_request* req)
 {
   struct bs_device_app *app = bs_core_find_app(req->dev_id);

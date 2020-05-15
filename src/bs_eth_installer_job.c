@@ -39,6 +39,10 @@ static int bs_eth_installer_resp_handler(char * cmd, struct cJSON * resp, struct
     
     // insert to que of eth installer 
     bs_core_req_eth_instl_prepare(origin);
+  } else if (strcmp(cmd, MSG_PREPARE_ACTIVATION_RESULT) == 0) {
+    bs_core_req_eth_instl_act(origin);
+  } else if (strcmp(cmd, MSG_REQUEST_STATE_RESULT) == 0) {
+    bs_core_req_eth_instl_act(origin);
   }
   return 1;
 }
@@ -349,3 +353,39 @@ void bs_eth_installer_prepare(struct bs_eth_installer_core_request *req, char *m
 
   mg_send(app->job.remote, msg, pc);
 }
+
+void bs_eth_installer_stat(struct bs_eth_installer_core_request *req, char *msg)
+{
+  struct bs_device_app * app = NULL;
+  unsigned int pc = 0;
+  //TODO: 'node' and 'task' configurable. For now, 109 means VDCM
+  static char *resp_header = "{\"node\":109,\"task\":\"MSG_REQUEST_STATE\",\"category\":0,\"payload\":{}}";
+  // first 4 bytes for length
+  pc += 4;
+
+  // header
+  strcpy(msg + pc, resp_header);
+  pc += strlen(resp_header);
+
+  // to be safe
+  msg[pc] = 0;
+  pc += 1;
+
+  // the value of pc is the length
+  msg[0] = (char) (pc<< 24);
+  msg[1] = (char) (pc<< 16);
+  msg[2] = (char) (pc<< 8);
+  msg[3] = (char) (pc);
+
+  printf("-------- raw json to eth installer:----------\n");
+  printf("%s\n", msg+4);
+
+  app = req->app;
+  if (app->job.remote == NULL) {
+    printf("app data corrupted: %s", app->dev_id);
+    return;
+  }
+
+  mg_send(app->job.remote, msg, pc);
+}
+

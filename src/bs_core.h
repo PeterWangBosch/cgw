@@ -106,6 +106,7 @@ void *bs_core_thread(void *);
 struct bs_device_app * bs_core_eth_installer_up(struct mg_connection *);
 struct bs_device_app * bs_core_eth_installer_down(struct mg_connection *);
 int bs_core_req_eth_instl_prepare(struct bs_device_app *);
+int bs_core_req_eth_instl_act(struct bs_device_app *);
 
 unsigned int bs_print_json_upgrade_stat(struct bs_device_app *, char *);
 #ifdef __cplusplus
