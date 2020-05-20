@@ -22,5 +22,6 @@ Test:
 a. To test socket server
    nc 127.0.0.1 8018
 b. To test http server
-   curl http://127.0.0.1:8018/test/live
+   curl http://127.0.0.1:8018/test/livei
+   curl --header "Content-Type: application/json" -d "{\"dev_id\":\"VDCM\",\"payload\":{\"url\":\"VDCM\"}}" http://localhost:8018/pkg/new
    curl --header "Content-Type: application/json" -d "{\"dev_id\":\"xxx\",\"payload\":{\"url\":\"127.0.0.1\"}}" http://localhost:8018/pkg/new

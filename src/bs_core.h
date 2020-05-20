@@ -82,6 +82,9 @@ union bs_core_request_data {
 #define BS_CORE_REQ_TDR_STAT_UPDATE 4
 #define BS_CORE_REQ_TDR_STAT_CHECK 5
 
+#define BS_CORE_REQ_ETHECU_VER 6
+#define BS_CORE_REQ_REC_ERR 7
+
 struct bs_core_request {
   unsigned long conn_id;
   unsigned int cmd;

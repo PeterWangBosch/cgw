@@ -196,7 +196,7 @@ void bs_core_init_ctx(const char * conf_file)
   g_ctx.apps[0].pkg_stat.type = BS_PKG_TYPE_CAN_ECU;
   g_ctx.apps[0].pkg_stat.stat = bs_pkg_stat_idle;
   bs_init_device_app(g_ctx.apps);
-  strcpy(g_ctx.apps[1].dev_id, "xxxx");
+  strcpy(g_ctx.apps[1].dev_id, "VDCM");
   g_ctx.apps[1].pkg_stat.type = BS_PKG_TYPE_ETH_ECU;
   g_ctx.apps[1].pkg_stat.stat = bs_pkg_stat_idle;
 

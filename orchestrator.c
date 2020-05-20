@@ -115,11 +115,27 @@ static void handle_pkg_new(struct mg_connection *nc, int ev, void *p) {
     goto last_step;
   }
 
+  char ip[32] = { 0 };
+  // use {ip:port} as key to recognize installer
+  if (mg_sock_addr_to_str(&(nc->sa),
+                          ip, 32,
+                          MG_SOCK_STRINGIFY_IP) <= 0) {
+
+    result = api_resp_err_payload;
+    goto last_step;
+  }
+
   // forward to core
   bs_init_core_request(&core_req);
   strcpy(core_req.dev_id, dev_id);
   core_req.cmd = BS_CORE_REQ_PKG_NEW;
-  strcpy(core_req.payload.info, iterator->valuestring);
+
+  // synthesize ftp downloading link
+  strcpy(core_req.payload.info, "ftp://");
+  strcat(core_req.payload.info, ip);
+  strcat(core_req.payload.info, "/");
+  strcat(core_req.payload.info, iterator->valuestring);
+
   printf("Core request PKG_NEW!\n");
   if (write(bs_get_core_ctx()->core_msg_sock[0], &core_req, sizeof(core_req)) < 0) {
     printf("Writing core sock error!\n");
