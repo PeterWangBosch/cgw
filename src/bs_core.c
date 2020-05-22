@@ -49,7 +49,6 @@ void bs_init_app_upgrade_stat(struct bs_app_upgrade_stat * p_stat)
 {
   int i = 0;
 
-  strcpy(p_stat->esti_time, "00:00:00 1900-01-01");
   strcpy(p_stat->start_time, "00:00:00 1900-01-01");
   strcpy(p_stat->time_stamp, "00:00:00 1900-01-01");
   for (i=0; i<16; i++) {
@@ -87,6 +86,12 @@ void bs_init_app_config(const char * filename)
   int offset = 1;
   char key[32] = { 0 };
   char val[32] = { 0 };
+
+  if (!fp) {
+    printf("failed to open config.ini");
+    return;
+  }
+
   while(!feof(fp)) {
     // TODO (tianjiao) : check and wirte to g_ctx.apps[cur_app_index]
     memset(line, 0, 1024);
@@ -173,6 +178,8 @@ void bs_core_init_ctx(const char * conf_file)
  // char *filename="/vendor/etc/config.ini";
   char *filename="/etc/orchestrator/config.ini";
   g_ctx.tlc = NULL;
+  memset(g_ctx.tlc_ip, 0, 32);
+  strcpy(g_ctx.tlc_ip, "127.0.0.1");
 
   g_ctx.next_conn_id = 0;
 
@@ -190,6 +197,9 @@ void bs_core_init_ctx(const char * conf_file)
 
   strcpy(g_ctx.eth_installer_port, "3003");
 
+  //init from config.ini
+  bs_init_app_config(filename);
+
   // TODO: just for NCT.
   bs_init_device_app(g_ctx.apps);
   strcpy(g_ctx.apps[0].dev_id, "xxx");
@@ -203,8 +213,6 @@ void bs_core_init_ctx(const char * conf_file)
   for(i=2; i<BS_MAX_DEVICE_APP_NUM; i++) {
     bs_init_device_app(g_ctx.apps + i);
   }
-  //init from config.ini
-  bs_init_app_config(filename);
 }
 
 void bs_core_exit_ctx()

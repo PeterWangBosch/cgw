@@ -63,7 +63,8 @@ struct bs_device_app {
 #define BS_MAX_DEVICE_APP_NUM 128
 struct bs_context {
   unsigned long next_conn_id; 
-  struct mg_connection * tlc;
+  struct mg_connection * tlc;//TODO: deprecated
+  char tlc_ip[32];
   sock_t core_msg_sock[2];
   sock_t eth_installer_msg_sock[2];
   char eth_installer_port[8];

@@ -9,6 +9,7 @@
 #include "mongoose/mongoose.h"
 #include "src/bs_core.h"
 #include "src/file_utils.h"
+#include "src/bs_dlc_apis.h"
 #include "src/bs_eth_installer_job.h"
 
 //-----------------------------------------------------------------------
@@ -44,6 +45,19 @@ static struct mg_serve_http_opts s_http_server_opts;
 static void handle_test_live(struct mg_connection *nc, int ev, void *p) {
   (void) ev;
   (void) p;
+
+  // update ip addr record
+  if (mg_sock_addr_to_str(&(nc->sa),
+                          bs_get_core_ctx()->tlc_ip, 32,
+                          MG_SOCK_STRINGIFY_IP) <= 0) {
+    memset(bs_get_core_ctx()->tlc_ip, 0, 32);
+    strcpy(bs_get_core_ctx()->tlc_ip, "127.0.0.1");
+    return;
+  }
+
+  dlc_report_status_start();
+  dlc_report_status_finish();
+  dlc_report_status_down();
 
   mg_printf(nc, "%s", "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n");
   mg_printf_http_chunk(nc, "{ \"result\": \"live\" }");
@@ -115,14 +129,14 @@ static void handle_pkg_new(struct mg_connection *nc, int ev, void *p) {
     goto last_step;
   }
 
-  char ip[32] = { 0 };
-  // use {ip:port} as key to recognize installer
+  // update ip addr record
+  memset(bs_get_core_ctx()->tlc_ip, 0, 32);
   if (mg_sock_addr_to_str(&(nc->sa),
-                          ip, 32,
+                          bs_get_core_ctx()->tlc_ip, 32,
                           MG_SOCK_STRINGIFY_IP) <= 0) {
-
-    result = api_resp_err_payload;
-    goto last_step;
+    memset(bs_get_core_ctx()->tlc_ip, 0, 32);
+    strcpy(bs_get_core_ctx()->tlc_ip, "127.0.0.1");
+    return;
   }
 
   // forward to core
@@ -130,11 +144,15 @@ static void handle_pkg_new(struct mg_connection *nc, int ev, void *p) {
   strcpy(core_req.dev_id, dev_id);
   core_req.cmd = BS_CORE_REQ_PKG_NEW;
 
-  // synthesize ftp downloading link
-  strcpy(core_req.payload.info, "ftp://");
-  strcat(core_req.payload.info, ip);
-  strcat(core_req.payload.info, "/");
-  strcat(core_req.payload.info, iterator->valuestring);
+  //TODO: change hard code
+  if (strcmp(dev_id, "WPC") != 0) {
+    // synthesize ftp downloading link
+    strcpy(core_req.payload.info, "ftp://");
+    strcat(core_req.payload.info, bs_get_core_ctx()->tlc_ip);
+    strcat(core_req.payload.info, "/");
+    strcat(core_req.payload.info, iterator->valuestring);
+  }
+
 
   printf("Core request PKG_NEW!\n");
   if (write(bs_get_core_ctx()->core_msg_sock[0], &core_req, sizeof(core_req)) < 0) {

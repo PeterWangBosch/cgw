@@ -1,5 +1,6 @@
 #include "cJSON/cJSON.h"
 
+#include "bs_dlc_apis.h"
 #include "bs_core.h"
 #include "bs_eth_installer_job.h"
 
