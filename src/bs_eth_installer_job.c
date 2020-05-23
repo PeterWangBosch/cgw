@@ -4,6 +4,13 @@
 #include "bs_core.h"
 #include "bs_eth_installer_job.h"
 
+static char msg[512];
+static char * ftp_links[4] = {
+  "/vdcm1_1.0.0\", \"size\": 3288766, \"checksum\": \"262e747b622a0e2071e223d728d614ba\", \"signature\": \"\", \"credential\": \"\"}",
+  "/vdcm2_1.0.0\", \"size\": 207429, \"checksum\": \"9d9a4bf90a550170865b9bc2122bfa54\", \"signature\": \"\", \"credential\": \"\"}",
+  "/vdcm3_1.0.0\", \"size\": 6898540, \"checksum\": \"83c1238dbdb2d1bb38c00056f5a70e9d\", \"signature\": \"\", \"credential\": \"\"}",
+  "/vdcm4_1.0.0\", \"size\": 12359749, \"checksum\": \"69666b0d1a9b275ca50b3a090e0675fd\", \"signature\": \"\", \"credential\": \"\"}"
+};
 //struct mg_connection * find_remote (struct mg_connection * nc)
 //{
 //  char addr[32];
@@ -34,16 +41,31 @@ static int bs_eth_installer_resp_handler(char * cmd, struct cJSON * resp, struct
 {
   (void) resp;
   if (strcmp(cmd, MSG_TRANSFER_PACKAGE_RESULT) == 0) {
+    printf("recv from SelfInstaller: MSG_TRANSFER_PACKAGE_RESULT\n");
     origin->job.internal_stat = BS_ETH_INSTALLER_PKG_NEW;
+    //bs_core_req_eth_instl_act(origin);
+    bs_eth_installer_prepare(origin, msg);
   } else if (strcmp(cmd, MSG_REQUEST_VERSIONS_RESULT) == 0) {
-    // TODO: compare response and recorded versions
-    
+    printf("recv from SelfInstaller: MSG_REQUEST_VERSIONS_RESULT\n");
     // insert to que of eth installer 
-    bs_core_req_eth_instl_prepare(origin);
+    bs_eth_installer_req_pkg_new(origin, msg, ftp_links[0]);
+    bs_eth_installer_req_pkg_new(origin, msg, ftp_links[1]);
+    bs_eth_installer_req_pkg_new(origin, msg, ftp_links[2]);
+    bs_eth_installer_req_pkg_new(origin, msg, ftp_links[3]);
   } else if (strcmp(cmd, MSG_PREPARE_ACTIVATION_RESULT) == 0) {
-    bs_core_req_eth_instl_act(origin);
+    printf("recv from SelfInstaller: MSG_REQUEST_ACTIVATION_RESULT\n");
+    // TODO: use current info of current app
+    printf("send to SelfInstaller: MSG_REQUEST_ACTIVATE\n");
+    bs_eth_installer_req_act(origin, msg, "{\"uri\":\"vdcm1_1.0.0\"}");
+    bs_eth_installer_req_act(origin, msg, "{\"uri\":\"vdcm2_1.0.0\"}");
+    bs_eth_installer_req_act(origin, msg, "{\"uri\":\"vdcm3_1.0.0\"}");
+    bs_eth_installer_req_act(origin, msg, "{\"uri\":\"vdcm4_1.0.0\"}");
   } else if (strcmp(cmd, MSG_REQUEST_STATE_RESULT) == 0) {
-    bs_core_req_eth_instl_act(origin);
+    printf("recv from SelfInstaller: MSG_REQUEST_STATE_RESULT\n");
+    //bs_core_req_eth_instl_act(origin);// TODO: in realworld, we should send it here?
+  } else if (strcmp(cmd, MSG_FINALIZE) == 0) {
+    dlc_report_status_finish();
+    printf("recv from SelfInstaller: MSG_FINALIZE\n");
   }
   return 1;
 }
@@ -101,21 +123,34 @@ void bs_init_eth_installer_core_request(struct bs_eth_installer_core_request * r
   memset(req->payload.info, 0, 128);
 }
 
+
 unsigned int bs_eth_installer_core_msg_parse(struct bs_eth_installer_core_request *req)
 {
-  static char msg[512];
 
   switch(req->cmd) {
     case BS_ETH_INSTALLER_PKG_NEW:
-      bs_eth_installer_req_pkg_new(req, msg);
+      bs_eth_installer_req_pkg_new(req->app, msg, ftp_links[0]);
+      bs_eth_installer_req_pkg_new(req->app, msg, ftp_links[1]);
+      bs_eth_installer_req_pkg_new(req->app, msg, ftp_links[2]);
+      bs_eth_installer_req_pkg_new(req->app, msg, ftp_links[3]);
       break;
     case BS_ETH_INSTALLER_VER:
       break;
     case BS_ETH_INSTALLER_PREPARE:
-      bs_eth_installer_prepare(req, msg);
+      bs_eth_installer_prepare(req->app, msg);
       break;
     case BS_ETH_INSTALLER_VERS:
-      bs_eth_installer_req_vers(req, msg);
+      bs_eth_installer_req_vers(req->app, msg);
+      //TODO: in real world, should be trigred by HMI?  
+      //bs_eth_installer_req_pkg_new(req, msg, ftp_links[0]);
+      //bs_eth_installer_req_pkg_new(req, msg, ftp_links[1]);
+      //bs_eth_installer_req_pkg_new(req, msg, ftp_links[2]);
+      //bs_eth_installer_req_pkg_new(req, msg, ftp_links[3]);
+      //bs_eth_installer_prepare(req, msg);
+      //bs_eth_installer_req_act(req, msg, "{\"uri\":\"vdcm1_1.0.0\"}");
+      //bs_eth_installer_req_act(req, msg, "{\"uri\":\"vdcm2_1.0.0\"}");
+      //bs_eth_installer_req_act(req, msg, "{\"uri\":\"vdcm3_1.0.0\"}");
+      //bs_eth_installer_req_act(req, msg, "{\"uri\":\"vdcm4_1.0.0\"}");
       break;
     case BS_ETH_INSTALLER_ROLLBACK:
       break;
@@ -127,11 +162,23 @@ unsigned int bs_eth_installer_core_msg_parse(struct bs_eth_installer_core_reques
 
 void * bs_eth_installer_job_thread(void *param)
 {
-  struct mg_mgr mgr;
-  struct bs_context * p_ctx = (struct bs_context *) param;
   struct bs_eth_installer_core_request req;
+  struct bs_context * p_ctx = (struct bs_context *) param;
 
   //bs_init_app_upgrade_stat(&(app->upgrade_stat));
+  for (;;) {
+     if (read(p_ctx->eth_installer_msg_sock[1], &req, sizeof(req)) > 0) {
+      bs_eth_installer_core_msg_parse(&req);
+    }
+  }
+
+  return NULL;
+}
+
+void * bs_eth_installer_job_msg_thread(void *param)
+{
+  struct mg_mgr mgr;
+  struct bs_context * p_ctx = (struct bs_context *) param;
 
   mg_mgr_init(&mgr, NULL);
 
@@ -140,13 +187,6 @@ void * bs_eth_installer_job_thread(void *param)
   printf("Listen on port %s\n", p_ctx->eth_installer_port);
 
   for (;;) {
-    // step 1: read msg from sock pair
-    if (read(p_ctx->eth_installer_msg_sock[1], &req, sizeof(req)) > 0) {
-      bs_eth_installer_core_msg_parse(&req);
-      continue;
-    }
-
-    // step 2: read msg from socket
     mg_mgr_poll(&mgr, 1000);
   }
 
@@ -154,6 +194,7 @@ void * bs_eth_installer_job_thread(void *param)
 
   return NULL;
 }
+
 
 void bs_eth_installer_msg_handler(struct mg_connection *nc, int ev, void *p)
 {
@@ -170,6 +211,7 @@ void bs_eth_installer_msg_handler(struct mg_connection *nc, int ev, void *p)
       // first 4 bytes for length
       len = io->buf[3] + (io->buf[2] << 8) + (io->buf[1] << 16) + (io->buf[0] << 24);
       //TODO: parse JSON
+      printf("Recv raw msg from sel-finstaller: %s", &(io->buf[4]));
 
       (void) len;
       app = find_app_by_nc(nc);
@@ -189,13 +231,59 @@ void bs_eth_installer_msg_handler(struct mg_connection *nc, int ev, void *p)
 }
 
 
-void bs_eth_installer_req_pkg_new(struct bs_eth_installer_core_request *req, char *msg)
+void bs_eth_installer_req_pkg_new(struct bs_device_app * app, char *msg, char* payload)
 {
-  struct bs_device_app * app = NULL;
+  static int i; //just for temp uuid
   unsigned int pc = 0;
-  char piece[64];
   //TODO: 'node' and 'task' configurable. For now, 109 means VDCM
-  static char *resp_header = "{\"node\":109,\"task\":\"TRANSFER_PACKAGE\",\"category\":0,\"payload\":{\"manifest\":[";
+  static char *resp_header[] ={
+"{\"node\":109,\"task\":\"TRANSFER_PACKAGE\",\"uuid\":\"803953b3-9beb-11ea-aafa-24418ccef95e\",\"category\":0,\"payload\":{\"uri\":\"ftp://",
+"{\"node\":109,\"task\":\"TRANSFER_PACKAGE\",\"uuid\":\"813953b3-9beb-11ea-aafa-24418ccef95e\",\"category\":0,\"payload\":{\"uri\":\"ftp://", 
+"{\"node\":109,\"task\":\"TRANSFER_PACKAGE\",\"uuid\":\"823953b3-9beb-11ea-aafa-24418ccef95e\",\"category\":0,\"payload\":{\"uri\":\"ftp://",
+"{\"node\":109,\"task\":\"TRANSFER_PACKAGE\",\"uuid\":\"833953b3-9beb-11ea-aafa-24418ccef95e\",\"category\":0,\"payload\":{\"uri\":\"ftp://"};
+ 
+  // first 4 bytes for length
+  pc += 4;
+
+  // header
+  i = (i+1)%4;
+  strcpy(msg + pc, resp_header[i]);
+  pc += strlen(resp_header[i]);
+
+  // ip addr
+  strcpy(msg+pc, bs_get_core_ctx()->tlc_ip);
+  pc += strlen(bs_get_core_ctx()->tlc_ip);
+
+  //payload 
+  strcpy(msg + pc, payload);
+  pc += strlen(payload);
+
+  // to be safe
+  msg[pc] = 0;
+  pc += 1;
+
+  // the value of pc is the length
+  msg[0] = (char) (pc<< 24);
+  msg[1] = (char) (pc<< 16);
+  msg[2] = (char) (pc<< 8);
+  msg[3] = (char) (pc);
+
+  printf("-------- raw json to eth installer:----------\n");
+  printf("%s\n", msg+4);
+
+  if (app->job.remote == NULL) {
+    printf("app data corrupted: %s", app->dev_id);
+    return;
+  }
+
+  mg_send(app->job.remote, msg, pc);
+}
+
+void bs_eth_installer_req_vers(struct bs_device_app * app, char *msg)
+{
+  unsigned int pc = 0;
+  //TODO: 'node' and 'task' configurable. For now, 109 means VDCM
+  static char *resp_header = "{\"node\":109,\"task\":\"REQUEST_VERSIONS\",\"uuid\":\"803953b3-9beb-11ea-aafa-24418ccef951\",\"category\":0,\"payload\":{}}";
   // first 4 bytes for length
   pc += 4;
 
@@ -203,64 +291,54 @@ void bs_eth_installer_req_pkg_new(struct bs_eth_installer_core_request *req, cha
   strcpy(msg + pc, resp_header);
   pc += strlen(resp_header);
 
-  strcpy(msg + pc, "{");
+  // to be safe
+  msg[pc] = 0;
   pc += 1;
 
-  //TODO: support multiple software
-  sprintf(piece, "\"software_id\":\"%s\",", "SV-1");
-  strcpy(msg + pc, piece);
-  pc += strlen(piece);
+  // the value of pc is the length
+  msg[0] = (char) (pc<< 24);
+  msg[1] = (char) (pc<< 16);
+  msg[2] = (char) (pc<< 8);
+  msg[3] = (char) (pc);
 
-  memset(piece, 0, 64);
-  sprintf(piece, "\"filename\":\"%s\",", "SV-1");
-  strcpy(msg + pc, piece);
-  pc += strlen(piece);
+  printf("-------- raw json to eth installer:----------\n");
+  printf("%s\n", msg+4);
 
-  memset(piece, 0, 64);
-  sprintf(piece, "\"version\":\"%s\",", "ver.1");
-  strcpy(msg + pc, piece);
-  pc += strlen(piece);
+  if (app->job.remote == NULL) {
+    printf("app data corrupted: %s", app->dev_id);
+    return;
+  }
 
-  memset(piece, 0, 64);
-  sprintf(piece, "\"delta\":\"%s\",", "true");
-  strcpy(msg + pc, piece);
-  pc += strlen(piece);
+  mg_send(app->job.remote, msg, pc);
+}
 
-  memset(piece, 0, 64);
-  sprintf(piece, "\"original_version\":\"%s\",", "ver.0");
-  strcpy(msg + pc, piece);
-  pc += strlen(piece);
+void bs_eth_installer_req_act(struct bs_device_app * app, char *msg, char *payload)
+{
+  static int i;
+  unsigned int pc = 0;
 
-  memset(piece, 0, 64);
-  sprintf(piece, "\"type\":\"%s\",", "1");
-  strcpy(msg + pc, piece);
-  pc += strlen(piece);
+  //TODO: 'node' and 'task' configurable. For now, 109 means VDCM
+  static char *resp_header[] = {
+"{\"node\":109,\"task\":\"ACTVATE\",\"uuid\":\"803953b3-9beb-11ea-aafa-24418ccef951\",\"category\":0,\"payload\":",
+"{\"node\":109,\"task\":\"ACTVATE\",\"uuid\":\"803953b3-9beb-11ea-aafa-24418ccef952\",\"category\":0,\"payload\":",
+"{\"node\":109,\"task\":\"ACTVATE\",\"uuid\":\"803953b3-9beb-11ea-aafa-24418ccef953\",\"category\":0,\"payload\":",
+"{\"node\":109,\"task\":\"ACTVATE\",\"uuid\":\"803953b3-9beb-11ea-aafa-24418ccef954\",\"category\":0,\"payload\":"
+  };
+  // first 4 bytes for length
+  pc += 4;
 
-  memset(piece, 0, 64);
-  sprintf(piece, "\"flashing\":\"%s\",", "0");
-  strcpy(msg + pc, piece);
-  pc += strlen(piece);
+  i = (i+1)%4;
+  
+  // header
+  strcpy(msg + pc, resp_header[i]);
+  pc += strlen(resp_header[i]);
 
-  // TODO: attrs
-  memset(piece, 0, 64);
-  sprintf(piece, "\"attrs\":[%s]","{\"attr0\":\"a0\"}");
-  strcpy(msg + pc, piece);
-  pc += strlen(piece);
+  // payload
+  strcpy(msg + pc, payload);
+  pc += strlen(payload);
 
-  // end of sw info
-  strcpy(msg + pc, "},");
-  pc += 1;    
-
-  // end of manifest
-  strcpy(msg + pc, "]");
-  pc += 1;
-
-  // end of payload
+  // end }
   strcpy(msg + pc, "}");
-  pc += 1;    
-
-  // end of whole json
-  strcpy(msg + pc, "}");
   pc += 1;
 
   // to be safe
@@ -276,7 +354,6 @@ void bs_eth_installer_req_pkg_new(struct bs_eth_installer_core_request *req, cha
   printf("-------- raw json to eth installer:----------\n");
   printf("%s\n", msg+4);
 
-  app = req->app;
   if (app->job.remote == NULL) {
     printf("app data corrupted: %s", app->dev_id);
     return;
@@ -285,12 +362,12 @@ void bs_eth_installer_req_pkg_new(struct bs_eth_installer_core_request *req, cha
   mg_send(app->job.remote, msg, pc);
 }
 
-void bs_eth_installer_req_vers(struct bs_eth_installer_core_request *req, char *msg)
+
+void bs_eth_installer_prepare(struct bs_device_app * app, char *msg)
 {
-  struct bs_device_app * app = NULL;
   unsigned int pc = 0;
   //TODO: 'node' and 'task' configurable. For now, 109 means VDCM
-  static char *resp_header = "{\"node\":109,\"task\":\"MSG_REQUEST_VERSIONS\",\"category\":0,\"payload\":{}}";
+  static char *resp_header = "{\"node\":109,\"task\":\"PREPARE_ACTIVATION\",\"category\":0,\"payload\":{}}";
   // first 4 bytes for length
   pc += 4;
 
@@ -311,7 +388,6 @@ void bs_eth_installer_req_vers(struct bs_eth_installer_core_request *req, char *
   printf("-------- raw json to eth installer:----------\n");
   printf("%s\n", msg+4);
 
-  app = req->app;
   if (app->job.remote == NULL) {
     printf("app data corrupted: %s", app->dev_id);
     return;
@@ -320,12 +396,11 @@ void bs_eth_installer_req_vers(struct bs_eth_installer_core_request *req, char *
   mg_send(app->job.remote, msg, pc);
 }
 
-void bs_eth_installer_prepare(struct bs_eth_installer_core_request *req, char *msg)
+void bs_eth_installer_stat(struct bs_device_app * app, char *msg)
 {
-  struct bs_device_app * app = NULL;
   unsigned int pc = 0;
   //TODO: 'node' and 'task' configurable. For now, 109 means VDCM
-  static char *resp_header = "{\"node\":109,\"task\":\"MSG_PREPARE_ACTIVATION\",\"category\":0,\"payload\":{\"url\":\"\"}}";
+  static char *resp_header = "{\"node\":109,\"task\":\"REQUEST_STATE\",\"category\":0,\"payload\":{}}";
   // first 4 bytes for length
   pc += 4;
 
@@ -346,42 +421,6 @@ void bs_eth_installer_prepare(struct bs_eth_installer_core_request *req, char *m
   printf("-------- raw json to eth installer:----------\n");
   printf("%s\n", msg+4);
 
-  app = req->app;
-  if (app->job.remote == NULL) {
-    printf("app data corrupted: %s", app->dev_id);
-    return;
-  }
-
-  mg_send(app->job.remote, msg, pc);
-}
-
-void bs_eth_installer_stat(struct bs_eth_installer_core_request *req, char *msg)
-{
-  struct bs_device_app * app = NULL;
-  unsigned int pc = 0;
-  //TODO: 'node' and 'task' configurable. For now, 109 means VDCM
-  static char *resp_header = "{\"node\":109,\"task\":\"MSG_REQUEST_STATE\",\"category\":0,\"payload\":{}}";
-  // first 4 bytes for length
-  pc += 4;
-
-  // header
-  strcpy(msg + pc, resp_header);
-  pc += strlen(resp_header);
-
-  // to be safe
-  msg[pc] = 0;
-  pc += 1;
-
-  // the value of pc is the length
-  msg[0] = (char) (pc<< 24);
-  msg[1] = (char) (pc<< 16);
-  msg[2] = (char) (pc<< 8);
-  msg[3] = (char) (pc);
-
-  printf("-------- raw json to eth installer:----------\n");
-  printf("%s\n", msg+4);
-
-  app = req->app;
   if (app->job.remote == NULL) {
     printf("app data corrupted: %s", app->dev_id);
     return;

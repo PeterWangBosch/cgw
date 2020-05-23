@@ -197,22 +197,22 @@ void bs_core_init_ctx(const char * conf_file)
 
   strcpy(g_ctx.eth_installer_port, "3003");
 
+  for(i=2; i<BS_MAX_DEVICE_APP_NUM; i++) {
+    bs_init_device_app(g_ctx.apps + i);
+  }
+
   //init from config.ini
   bs_init_app_config(filename);
 
   // TODO: just for NCT.
   bs_init_device_app(g_ctx.apps);
-  strcpy(g_ctx.apps[0].dev_id, "xxx");
+  strcpy(g_ctx.apps[0].dev_id, "WPC");
   g_ctx.apps[0].pkg_stat.type = BS_PKG_TYPE_CAN_ECU;
   g_ctx.apps[0].pkg_stat.stat = bs_pkg_stat_idle;
   bs_init_device_app(g_ctx.apps);
   strcpy(g_ctx.apps[1].dev_id, "VDCM");
   g_ctx.apps[1].pkg_stat.type = BS_PKG_TYPE_ETH_ECU;
   g_ctx.apps[1].pkg_stat.stat = bs_pkg_stat_idle;
-
-  for(i=2; i<BS_MAX_DEVICE_APP_NUM; i++) {
-    bs_init_device_app(g_ctx.apps + i);
-  }
 }
 
 void bs_core_exit_ctx()
@@ -309,50 +309,53 @@ static unsigned int gen_internal_id() {
 
 struct bs_device_app * bs_core_eth_installer_up(struct mg_connection * nc)
 {
-  struct bs_device_app * result = NULL;
-  char ip[24];
-  int i;
+  //struct bs_device_app * result = NULL;
+  char ip[32];
+  int i = 1;// TODO: in NCT, we don't have accurate ip cofig of eth ecu
 
-  for (i=0; i<BS_MAX_DEVICE_APP_NUM; i++) {
+  // use {ip:port} as key to recognize installer
+  if (mg_sock_addr_to_str(&(nc->sa), 
+                          ip, 32,
+                          MG_SOCK_STRINGIFY_IP) <= 0) {
+    return NULL;
+  }
+
+  printf("Eth SelfInstaller up: %s\n", ip);
+
+//  for (i=0; i<BS_MAX_DEVICE_APP_NUM; i++) {
     // invalid device
-    if (g_ctx.apps[i].dev_id[0] == 0) {
-      continue;
-    }
-
-    // use {ip:port} as key to recognize installer
-    if (mg_sock_addr_to_str(&(nc->sa), 
-                            ip, 32,
-                            MG_SOCK_STRINGIFY_IP |
-                            MG_SOCK_STRINGIFY_PORT) <= 0) {
-      return NULL;
-    }
+    //if (g_ctx.apps[i].dev_id[0] == 0) {
+    //  continue;
+    //}
 
     // TODO: make sure we have config file to obtain installer's ip 
-    if (strcmp(g_ctx.apps[i].job.ip_addr, ip) == 0) {
+    //if (strcmp(g_ctx.apps[i].job.ip_addr, ip) == 0) {
+      strcpy(g_ctx.apps[i].job.ip_addr, ip);
       g_ctx.apps[i].job.internal_id = gen_internal_id();
-    } 
-  }
-  return result;
+      g_ctx.apps[i].job.remote = nc;
+      return &(g_ctx.apps[i]);
+    //} 
+//  }
+  //return result;
 }
 
 struct bs_device_app * find_app_by_nc(struct mg_connection * nc)
 {
   struct bs_device_app * result = NULL;
-  char ip[24];
+  char ip[32];
   int i;
+
+  // use {ip:port} as key to recognize installer
+  if (mg_sock_addr_to_str(&(nc->sa),
+                          ip, 32,
+                          MG_SOCK_STRINGIFY_IP) <= 0) {
+    return NULL;
+  }
 
   for (i=0; i<BS_MAX_DEVICE_APP_NUM; i++) {
     // invalid device
     if (g_ctx.apps[i].dev_id[0] == 0) {
       continue;
-    }
-
-    // use {ip:port} as key to recognize installer
-    if (mg_sock_addr_to_str(&(nc->sa),
-                            ip, 32,
-                            MG_SOCK_STRINGIFY_IP |
-                            MG_SOCK_STRINGIFY_PORT) <= 0) {
-      return NULL;
     }
 
     if (strcmp(g_ctx.apps[i].job.ip_addr, ip) == 0) {
@@ -366,7 +369,7 @@ struct bs_device_app * find_app_by_nc(struct mg_connection * nc)
 struct bs_device_app * bs_core_eth_installer_down(struct mg_connection * nc)
 {
   struct bs_device_app * result = NULL;
-  char ip[24];
+  char ip[32];
   int i;
 
   for (i=0; i<BS_MAX_DEVICE_APP_NUM; i++) {
