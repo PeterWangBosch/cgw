@@ -28,6 +28,8 @@ b. To test http server
    echo "    {\"node\":109,\"task\":\"PREPARE_ACTIVATION_RESULT\",\"category\":0,\"response\":{}}" | nc 127.0.0.1 3003
    echo "    {\"node\":109,\"task\":\"FINALIZE\",\"category\":0,\"response\":{}}" | nc 127.0.0.1 3003
 
+   curl --header "Content-Type: application/json" -d "{\"dev_id\":\"WPC\",\"payload\":{\"url\":\"ftp://speedtest.tele2.net/1KB.zip\"}}" http://localhost:8018/pkg/new
+
    curl --header "Content-Type: application/json" -d "{\"dev_id\":\"VDCM\",\"payload\":{\"url\":\"VDCM\"}}" http://localhost:8019/status
 
    curl --header "Content-Type: application/json" -d "{\"dev_id\":\"VDCM\",\"payload\":{\"url\":\"VDCM\"}}" http://localhost:8018/pkg/new

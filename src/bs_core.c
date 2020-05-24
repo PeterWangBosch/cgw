@@ -197,7 +197,7 @@ void bs_core_init_ctx(const char * conf_file)
 
   strcpy(g_ctx.eth_installer_port, "3003");
 
-  for(i=2; i<BS_MAX_DEVICE_APP_NUM; i++) {
+  for(i=0; i<BS_MAX_DEVICE_APP_NUM; i++) {
     bs_init_device_app(g_ctx.apps + i);
   }
 
@@ -213,6 +213,10 @@ void bs_core_init_ctx(const char * conf_file)
   strcpy(g_ctx.apps[1].dev_id, "VDCM");
   g_ctx.apps[1].pkg_stat.type = BS_PKG_TYPE_ETH_ECU;
   g_ctx.apps[1].pkg_stat.stat = bs_pkg_stat_idle;
+  bs_init_device_app(g_ctx.apps);
+  strcpy(g_ctx.apps[2].dev_id, "WPC");
+  g_ctx.apps[2].pkg_stat.type = BS_PKG_TYPE_CAN_ECU;
+  g_ctx.apps[2].pkg_stat.stat = bs_pkg_stat_idle;
 }
 
 void bs_core_exit_ctx()
@@ -510,11 +514,12 @@ int bs_core_req_pkg_new(struct bs_core_request* req)
     case BS_PKG_TYPE_CAN_ECU:
     case BS_PKG_TYPE_ORCH:
       // local download & cache
-      printf("core recv: pkg new\n");
+      printf("core recv: pkg new CAN ECU\n");
       app->pkg_stat.stat = bs_pkg_stat_loading;
       bs_get_core_ctx()->loading_app = app;
       break;
     case BS_PKG_TYPE_ETH_ECU:
+      printf("core recv: pkg new ETH ECU\n");
       //TODO: start remote installer job
       bs_init_eth_installer_core_request(&inst_req, app);
       inst_req.cmd = BS_ETH_INSTALLER_VERS;

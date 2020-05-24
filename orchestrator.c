@@ -154,7 +154,7 @@ static void handle_pkg_new(struct mg_connection *nc, int ev, void *p) {
   }
 
 
-  printf("Core request PKG_NEW!\n");
+  printf("Core request PKG_NEW: dev_id: %s tlc_ip: %s\n", dev_id, bs_get_core_ctx()->tlc_ip);
   if (write(bs_get_core_ctx()->core_msg_sock[0], &core_req, sizeof(core_req)) < 0) {
     printf("Writing core sock error!\n");
     result = api_resp_err_fail;
