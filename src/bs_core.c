@@ -137,7 +137,7 @@ void bs_init_app_config(const char * filename)
     }
     if (strcmp(key ,"pkg_name") == 0)
     {
-      g_ctx.apps[cur_app_index-1].pkg_stat.name = val;
+      strcpy(g_ctx.apps[cur_app_index-1].pkg_stat.name, val);
     }
     if (strcmp(key ,"upgrade_stat") == 0)
     {
@@ -176,7 +176,7 @@ void bs_core_init_ctx(const char * conf_file)
   (void) conf_file;
 
  // char *filename="/vendor/etc/config.ini";
-  char *filename="/etc/orchestrator/config.ini";
+  char *filename="/data/etc/orchestrator/config.ini";
   g_ctx.tlc = NULL;
   memset(g_ctx.tlc_ip, 0, 32);
   strcpy(g_ctx.tlc_ip, "127.0.0.1");
@@ -209,6 +209,7 @@ void bs_core_init_ctx(const char * conf_file)
   strcpy(g_ctx.apps[0].dev_id, "WPC");
   g_ctx.apps[0].pkg_stat.type = BS_PKG_TYPE_CAN_ECU;
   g_ctx.apps[0].pkg_stat.stat = bs_pkg_stat_idle;
+  strcpy(g_ctx.apps[0].pkg_stat.name, "/data/var/orchestrator/wpc.1.0.0");
   bs_init_device_app(g_ctx.apps);
   strcpy(g_ctx.apps[1].dev_id, "VDCM");
   g_ctx.apps[1].pkg_stat.type = BS_PKG_TYPE_ETH_ECU;
@@ -217,6 +218,7 @@ void bs_core_init_ctx(const char * conf_file)
   strcpy(g_ctx.apps[2].dev_id, "WPC");
   g_ctx.apps[2].pkg_stat.type = BS_PKG_TYPE_CAN_ECU;
   g_ctx.apps[2].pkg_stat.stat = bs_pkg_stat_idle;
+  strcpy(g_ctx.apps[2].pkg_stat.name, "/data/var/orchestrator/wpc.1.0.0");
 }
 
 void bs_core_exit_ctx()
@@ -567,6 +569,7 @@ void *bs_core_thread(void *param)
         break;
       case BS_CORE_REQ_PKG_READY:
         bs_core_req_pkg_ready(&req);
+        bs_core_req_tdr_run(&req);//TODO: remove it when HMI is ready
         break;
       case BS_CORE_REQ_TDR_RUN:
         bs_core_req_tdr_run(&req);

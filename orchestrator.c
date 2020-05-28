@@ -265,7 +265,7 @@ static void handle_tdr_run(struct mg_connection *nc, int ev, void *p) {
 
   iterator = root->child;
   while(iterator) {
-    if (strcmp(iterator->string, "deviceId") == 0) {
+    if (strcmp(iterator->string, "dev_id") == 0) {
       parse_stat = JSON_HAS_DEVID;
       dev_id = iterator->valuestring;
       break;
@@ -313,7 +313,7 @@ static void handle_upload(struct mg_connection *nc, int ev, void *p) {
     case MG_EV_HTTP_PART_BEGIN: {
       if (data == NULL) {
         data = calloc(1, sizeof(struct file_writer_data));
-        data->fp = on_write("/var/orchestrator/wpc.1.0.0");//TODO: read file name from context
+        data->fp = on_write("/data/var/orchestrator/wpc.1.0.0");//TODO: read file name from context
         data->bytes_written = 0;
 
         if (data->fp == NULL) {

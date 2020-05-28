@@ -1,18 +1,9 @@
-#!/bin/bash
+mkdir /data/vendor/bin/ -p
+mkdir /data/etc/orchestrator/ -p
+mkdir /data/var/orchestrator/ -p
+chmod 777 /data/var/orchestrator/
 
-#su
-#if [ $? != 0 ]
-#then
-#    echo "[ERROR] Make sure you're root user."
-#    exit 1
-#fi
+cp orchestrator /data/vendor/bin/
+cp config.ini /data/etc/orchestrator/
 
-mkdir /vendor/bin/ -p
-mkdir /etc/orchestrator/ -p
-mkdir /var/orchestrator/ -p
-chmod 777 /var/orchestrator/
-
-cp orchestrator /vendor/bin/
-cp config.ini /etc/orchestrator/
-
-echo "Orchestrator has been installed in /vendor/bin/"
+echo "Orchestrator has been installed in /data/vendor/bin/"

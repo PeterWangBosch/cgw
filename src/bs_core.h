@@ -40,7 +40,7 @@ extern const char *bs_pkg_stat_succ;
 extern const char *bs_pkg_stat_fail;
 struct bs_app_pkg_stat {
   uint8_t type;
-  const char *name;
+  char name[64];//TODO: max length 64?
   const char *stat;
 };
 

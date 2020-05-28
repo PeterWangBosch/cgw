@@ -14,7 +14,8 @@ void * bs_tdr_job_thread(void *param) {
   core_req.cmd = BS_CORE_REQ_TDR_STAT_UPDATE;
 
   // synthersize command line
-  sprintf(cmd, "ls -la %s", app->pkg_stat.name);//"./aaas_runtask.sh ");
+  sprintf(cmd, "sh /tdr/usr/bin/aaas_runtask.sh RDA %s", app->pkg_stat.name);//"./aaas_runtask.sh ");
+  printf("We are going to run cmd: %s\n", cmd); 
 
   if ((fp = popen(cmd, "r")) == NULL) {
     core_req.payload.stat.progress_percent = 0;
@@ -38,6 +39,19 @@ void * bs_tdr_job_thread(void *param) {
       progress = 99;
     sleep(1);
   }
+  pclose(fp);
+  printf("CGW Orchstrator: tdr run ready!\n");
+
+  //------------------------------
+  if ((fp = popen("sh /tdr/usr/bin/aaas_runtask.sh RDA /data/data/ExecuteRdaJob.ea8b7e7f-349b-4790-8f81-fa5dfd1c6fed.v1.zip", "r")) == NULL) {
+    printf("Run ExecuteRdaJob error!\n");
+    return NULL;
+  }
+
+  while (fgets(output, sizeof(output)-1, fp) != NULL) {
+    sleep(1);
+  }
+  //------------------------------
 
   core_req.payload.stat.progress_percent = 100;
   if (write(bs_get_core_ctx()->core_msg_sock[0], &core_req, sizeof(core_req)) < 0) {
