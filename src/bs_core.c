@@ -195,7 +195,7 @@ void bs_core_init_ctx(const char * conf_file)
 //  signal(SIGTERM, signal_handler);
 //  signal(SIGINT, signal_handler);
 
-  strcpy(g_ctx.eth_installer_port, "3003");
+  strcpy(g_ctx.eth_installer_port, "1025");
 
   for(i=0; i<BS_MAX_DEVICE_APP_NUM; i++) {
     bs_init_device_app(g_ctx.apps + i);

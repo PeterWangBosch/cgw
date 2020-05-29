@@ -263,9 +263,9 @@ void bs_eth_installer_req_pkg_new(struct bs_device_app * app, char *msg, char* p
   pc += 1;
 
   // the value of pc is the length
-  msg[0] = (char) (pc<< 24);
-  msg[1] = (char) (pc<< 16);
-  msg[2] = (char) (pc<< 8);
+  msg[0] = (char) (pc>> 24);
+  msg[1] = (char) (pc>> 16);
+  msg[2] = (char) (pc>> 8);
   msg[3] = (char) (pc);
 
   printf("-------- raw json to eth installer:----------\n");
@@ -296,9 +296,9 @@ void bs_eth_installer_req_vers(struct bs_device_app * app, char *msg)
   pc += 1;
 
   // the value of pc is the length
-  msg[0] = (char) (pc<< 24);
-  msg[1] = (char) (pc<< 16);
-  msg[2] = (char) (pc<< 8);
+  msg[0] = (char) (pc>> 24);
+  msg[1] = (char) (pc>> 16);
+  msg[2] = (char) (pc>> 8);
   msg[3] = (char) (pc);
 
   printf("-------- raw json to eth installer:----------\n");
@@ -346,9 +346,9 @@ void bs_eth_installer_req_act(struct bs_device_app * app, char *msg, char *paylo
   pc += 1;
 
   // the value of pc is the length
-  msg[0] = (char) (pc<< 24);
-  msg[1] = (char) (pc<< 16);
-  msg[2] = (char) (pc<< 8);
+  msg[0] = (char) (pc>> 24);
+  msg[1] = (char) (pc>> 16);
+  msg[2] = (char) (pc>> 8);
   msg[3] = (char) (pc);
 
   printf("-------- raw json to eth installer:----------\n");
@@ -380,9 +380,9 @@ void bs_eth_installer_prepare(struct bs_device_app * app, char *msg)
   pc += 1;
 
   // the value of pc is the length
-  msg[0] = (char) (pc<< 24);
-  msg[1] = (char) (pc<< 16);
-  msg[2] = (char) (pc<< 8);
+  msg[0] = (char) (pc>> 24);
+  msg[1] = (char) (pc>> 16);
+  msg[2] = (char) (pc>> 8);
   msg[3] = (char) (pc);
 
   printf("-------- raw json to eth installer:----------\n");
@@ -413,9 +413,9 @@ void bs_eth_installer_stat(struct bs_device_app * app, char *msg)
   pc += 1;
 
   // the value of pc is the length
-  msg[0] = (char) (pc<< 24);
-  msg[1] = (char) (pc<< 16);
-  msg[2] = (char) (pc<< 8);
+  msg[0] = (char) (pc>> 24);
+  msg[1] = (char) (pc>> 16);
+  msg[2] = (char) (pc>> 8);
   msg[3] = (char) (pc);
 
   printf("-------- raw json to eth installer:----------\n");
