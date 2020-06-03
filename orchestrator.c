@@ -395,6 +395,14 @@ int main(int argc, char *argv[]) {
   (void) argc;
   (void) argv;
 
+
+  if (argc >= 2 && strcmp(argv[1], "-v") == 0) {
+    printf("====== Orchestrator =========\n");
+    printf("     Version: 1.0.0.0\n");
+    printf("=============================\n");
+    return 0;
+  }
+
   bs_core_init_ctx();
   mg_start_thread(bs_core_thread, NULL);
   mg_start_thread(bs_eth_installer_job_thread, bs_get_core_ctx());

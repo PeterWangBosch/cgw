@@ -5,11 +5,12 @@
 #include "bs_eth_installer_job.h"
 
 static char msg[512];
+static char * ftp_pc = "192.168.0.3/xcu8.0_app_wrong_v1.1.1.bin.zip\\\", \\\"size\\\": 207436, \\\"checksum\\\": \\\"88f6aef7377ad93a8ab5d1700fe1688e\\\", \\\"signature\\\": \\\"XXXXXX\\\", \\\"credential\\\": \\\"admin:12345\\\"}\"";
 static char * ftp_links[4] = {
-  "/vdcm1_1.0.0\", \"size\": 3288766, \"checksum\": \"262e747b622a0e2071e223d728d614ba\", \"signature\": \"\", \"credential\": \"\"}",
-  "/vdcm2_1.0.0\", \"size\": 207429, \"checksum\": \"9d9a4bf90a550170865b9bc2122bfa54\", \"signature\": \"\", \"credential\": \"\"}",
-  "/vdcm3_1.0.0\", \"size\": 6898540, \"checksum\": \"83c1238dbdb2d1bb38c00056f5a70e9d\", \"signature\": \"\", \"credential\": \"\"}",
-  "/vdcm4_1.0.0\", \"size\": 12359749, \"checksum\": \"69666b0d1a9b275ca50b3a090e0675fd\", \"signature\": \"\", \"credential\": \"\"}"
+  "/vdcm1_1.0.0\\\", \\\"size\\\": 3288766, \\\"checksum\\\": \\\"262e747b622a0e2071e223d728d614ba\\\", \\\"signature\\\": \\\"\\\", \\\"credential\\\": \\\"\\\"}\"",
+  "/vdcm2_1.0.0\\\", \\\"size\\\": 207429, \\\"checksum\\\": \\\"9d9a4bf90a550170865b9bc2122bfa54\\\", \\\"signature\\\": \\\"\\\", \\\"credential\\\": \\\"\\\"}\"",
+  "/vdcm3_1.0.0\\\", \\\"size\\\": 6898540, \\\"checksum\\\": \\\"83c1238dbdb2d1bb38c00056f5a70e9d\\\", \\\"signature\\\": \\\"\\\", \\\"credential\\\": \\\"\\\"}\"",
+  "/vdcm4_1.0.0\\\", \\\"size\\\": 12359749, \\\"checksum\\\": \\\"69666b0d1a9b275ca50b3a090e0675fd\\\", \\\"signature\\\": \\\"\\\", \\\"credential\\\": \\\"\\\"}\""
 };
 //struct mg_connection * find_remote (struct mg_connection * nc)
 //{
@@ -40,29 +41,28 @@ static struct cJSON * find_json_child(struct cJSON * root, char * label)
 static int bs_eth_installer_resp_handler(char * cmd, struct cJSON * resp, struct bs_device_app * origin)
 {
   (void) resp;
-  if (strcmp(cmd, MSG_TRANSFER_PACKAGE_RESULT) == 0) {
+  if (strstr(cmd, MSG_TRANSFER_PACKAGE_RESULT) != NULL) {
     printf("recv from SelfInstaller: MSG_TRANSFER_PACKAGE_RESULT\n");
     origin->job.internal_stat = BS_ETH_INSTALLER_PKG_NEW;
-    //bs_core_req_eth_instl_act(origin);
     bs_eth_installer_prepare(origin, msg);
   } else if (strcmp(cmd, MSG_REQUEST_VERSIONS_RESULT) == 0) {
     printf("recv from SelfInstaller: MSG_REQUEST_VERSIONS_RESULT\n");
     // insert to que of eth installer 
-    bs_eth_installer_req_pkg_new(origin, msg, ftp_links[0]);
-    bs_eth_installer_req_pkg_new(origin, msg, ftp_links[1]);
-    bs_eth_installer_req_pkg_new(origin, msg, ftp_links[2]);
-    bs_eth_installer_req_pkg_new(origin, msg, ftp_links[3]);
-  } else if (strcmp(cmd, MSG_PREPARE_ACTIVATION_RESULT) == 0) {
-    printf("recv from SelfInstaller: MSG_REQUEST_ACTIVATION_RESULT\n");
+    bs_eth_installer_stat(origin, msg);
+  } else if (strstr(cmd, MSG_PREPARE_ACTIVATION_RESULT) != NULL) {
+    printf("recv from SelfInstaller: MSG_PREPARE_ACTIVATION_RESULT\n");
     // TODO: use current info of current app
-    printf("send to SelfInstaller: MSG_REQUEST_ACTIVATE\n");
-    bs_eth_installer_req_act(origin, msg, "{\"uri\":\"vdcm1_1.0.0\"}");
-    bs_eth_installer_req_act(origin, msg, "{\"uri\":\"vdcm2_1.0.0\"}");
-    bs_eth_installer_req_act(origin, msg, "{\"uri\":\"vdcm3_1.0.0\"}");
-    bs_eth_installer_req_act(origin, msg, "{\"uri\":\"vdcm4_1.0.0\"}");
+    bs_eth_installer_req_act(origin, msg, "\"{\\\"uri\\\":\\\"vdcm1_1.0.0\\\"}\"");
+    bs_eth_installer_req_act(origin, msg, "\"{\\\"uri\\\":\\\"vdcm2_1.0.0\\\"}\"");
+    bs_eth_installer_req_act(origin, msg, "\"{\\\"uri\\\":\\\"vdcm3_1.0.0\\\"}\"");
+    bs_eth_installer_req_act(origin, msg, "\"{\\\"uri\\\":\\\"vdcm4_1.0.0\\\"}\"");
   } else if (strcmp(cmd, MSG_REQUEST_STATE_RESULT) == 0) {
     printf("recv from SelfInstaller: MSG_REQUEST_STATE_RESULT\n");
-    //bs_core_req_eth_instl_act(origin);// TODO: in realworld, we should send it here?
+    bs_eth_installer_req_pkg_new(origin, msg, ftp_pc);
+    //bs_eth_installer_req_pkg_new(origin, msg, ftp_links[0]);
+    //bs_eth_installer_req_pkg_new(origin, msg, ftp_links[1]);
+    //bs_eth_installer_req_pkg_new(origin, msg, ftp_links[2]);
+    //bs_eth_installer_req_pkg_new(origin, msg, ftp_links[3]);
   } else if (strcmp(cmd, MSG_FINALIZE) == 0) {
     dlc_report_status_finish();
     printf("recv from SelfInstaller: MSG_FINALIZE\n");
@@ -96,11 +96,14 @@ unsigned int bs_eth_installer_msg_parse(char* json, struct bs_device_app * app)
   }
   cmd = child->valuestring;
 
-  child = find_json_child(root, "response");
-  if (!child) {
-    parse_stat = ETH_JSON_NO_RESP;
-    goto last_step;
-  }
+//  child = find_json_child(root, "payload");
+//  if (!child) {
+//    child = find_json_child(root, "response");
+//    if (!child) {
+//      parse_stat = ETH_JSON_NO_RESP;
+//      goto last_step;
+//    }
+//  }
 
   if (!bs_eth_installer_resp_handler(cmd, child, app)) {
     parse_stat = ETH_JSON_WRONG_RESP;
@@ -195,6 +198,21 @@ void * bs_eth_installer_job_msg_thread(void *param)
   return NULL;
 }
 
+void bs_clean_str(char* in, char* out)
+{
+  int len = 0;
+  len = strlen(in);
+  
+  int i = 0;
+  int j = 0;
+  while(i < len) {
+    if (in[i] != 32 && in[i] != 13) {
+      out[j++] = in[i];
+    }  
+    i++;
+  }
+  out[j] = 0;
+}
 
 void bs_eth_installer_msg_handler(struct mg_connection *nc, int ev, void *p)
 {
@@ -202,10 +220,17 @@ void bs_eth_installer_msg_handler(struct mg_connection *nc, int ev, void *p)
   struct bs_device_app * app = NULL;
   unsigned int len = 0;
   (void) p;
+  static char msg[512];
 
   switch (ev) {
     case MG_EV_ACCEPT:
       bs_core_eth_installer_up(nc);
+
+      app = find_app_by_nc(nc);
+      if (app) {
+        bs_eth_installer_req_vers(app, msg);
+
+      }
       break;
     case MG_EV_RECV:
       // first 4 bytes for length
@@ -216,7 +241,9 @@ void bs_eth_installer_msg_handler(struct mg_connection *nc, int ev, void *p)
       (void) len;
       app = find_app_by_nc(nc);
       if (app) {
-        bs_eth_installer_msg_parse(&(io->buf[4]), app);
+        bs_clean_str(&(io->buf[4]), msg);
+        printf("Cleaned msg from sel-finstaller: %s", msg);
+        bs_eth_installer_msg_parse(msg, app);
       } else {
         printf("response from wrong installer\n");        
       }
@@ -237,10 +264,17 @@ void bs_eth_installer_req_pkg_new(struct bs_device_app * app, char *msg, char* p
   unsigned int pc = 0;
   //TODO: 'node' and 'task' configurable. For now, 109 means VDCM
   static char *resp_header[] ={
-"{\"node\":109,\"task\":\"TRANSFER_PACKAGE\",\"uuid\":\"803953b3-9beb-11ea-aafa-24418ccef95e\",\"category\":0,\"payload\":{\"uri\":\"ftp://",
-"{\"node\":109,\"task\":\"TRANSFER_PACKAGE\",\"uuid\":\"813953b3-9beb-11ea-aafa-24418ccef95e\",\"category\":0,\"payload\":{\"uri\":\"ftp://", 
-"{\"node\":109,\"task\":\"TRANSFER_PACKAGE\",\"uuid\":\"823953b3-9beb-11ea-aafa-24418ccef95e\",\"category\":0,\"payload\":{\"uri\":\"ftp://",
-"{\"node\":109,\"task\":\"TRANSFER_PACKAGE\",\"uuid\":\"833953b3-9beb-11ea-aafa-24418ccef95e\",\"category\":0,\"payload\":{\"uri\":\"ftp://"};
+"{\"node\":109,\"task\":\"TRANSFER_PACKAGE\",\"uuid\":\"813953b3-9beb-11ea-aafa-24418ccef951\",\"category\":0,\"payload\":\"{\\\"uri\\\":\\\"ftp://",
+"{\"node\":109,\"task\":\"TRANSFER_PACKAGE\",\"uuid\":\"813953b3-9beb-11ea-aafa-24418ccef951\",\"category\":0,\"payload\":\"{\\\"uri\\\":\\\"ftp://", 
+"{\"node\":109,\"task\":\"TRANSFER_PACKAGE\",\"uuid\":\"813953b3-9beb-11ea-aafa-24418ccef951\",\"category\":0,\"payload\":\"{\\\"uri\\\":\\\"ftp://",
+"{\"node\":109,\"task\":\"TRANSFER_PACKAGE\",\"uuid\":\"813953b3-9beb-11ea-aafa-24418ccef951\",\"category\":0,\"payload\":\"{\\\"uri\\\":\\\"ftp://"};
+
+//  static char *resp_uuid[] = {
+//",\"uuid\":\"813953b3-9beb-11ea-aafa-24418ccef951\"",
+//",\"uuid\":\"823953b3-9beb-11ea-aafa-24418ccef952\"",
+//",\"uuid\":\"833953b3-9beb-11ea-aafa-24418ccef953\"",
+//",\"uuid\":\"843953b3-9beb-11ea-aafa-24418ccef954\""
+//  };
  
   // first 4 bytes for length
   pc += 4;
@@ -251,22 +285,30 @@ void bs_eth_installer_req_pkg_new(struct bs_device_app * app, char *msg, char* p
   pc += strlen(resp_header[i]);
 
   // ip addr
-  strcpy(msg+pc, bs_get_core_ctx()->tlc_ip);
-  pc += strlen(bs_get_core_ctx()->tlc_ip);
+//  strcpy(msg+pc, bs_get_core_ctx()->tlc_ip);
+//  pc += strlen(bs_get_core_ctx()->tlc_ip);
 
   //payload 
   strcpy(msg + pc, payload);
   pc += strlen(payload);
 
-  // to be safe
-  msg[pc] = 0;
+  // uuid
+//  strcpy(msg + pc, resp_uuid[i]);
+//  pc += strlen(resp_uuid[i]);
+
+  // end }
+  strcpy(msg + pc, "}");
   pc += 1;
 
+  // to be safe
+  msg[pc] = 0;
+//  pc += 1;
+
   // the value of pc is the length
-  msg[0] = (char) (pc>> 24);
-  msg[1] = (char) (pc>> 16);
-  msg[2] = (char) (pc>> 8);
-  msg[3] = (char) (pc);
+  msg[0] = (char) ((pc-4)>> 24);
+  msg[1] = (char) ((pc-4)>> 16);
+  msg[2] = (char) ((pc-4)>> 8);
+  msg[3] = (char) (pc-4);
 
   printf("-------- raw json to eth installer:----------\n");
   printf("%s\n", msg+4);
@@ -283,7 +325,7 @@ void bs_eth_installer_req_vers(struct bs_device_app * app, char *msg)
 {
   unsigned int pc = 0;
   //TODO: 'node' and 'task' configurable. For now, 109 means VDCM
-  static char *resp_header = "{\"node\":109,\"task\":\"REQUEST_VERSIONS\",\"uuid\":\"803953b3-9beb-11ea-aafa-24418ccef951\",\"category\":0,\"payload\":{}}";
+  static char *resp_header = "{\"node\":109,\"task\":\"REQUEST_VERSIONS\",\"category\":0,\"payload\":\"{}\", \"uuid\":\"803953b3-9beb-11ea-aafa-24418ccef951\"}";
   // first 4 bytes for length
   pc += 4;
 
@@ -293,13 +335,13 @@ void bs_eth_installer_req_vers(struct bs_device_app * app, char *msg)
 
   // to be safe
   msg[pc] = 0;
-  pc += 1;
+//  pc += 1;
 
   // the value of pc is the length
-  msg[0] = (char) (pc>> 24);
-  msg[1] = (char) (pc>> 16);
-  msg[2] = (char) (pc>> 8);
-  msg[3] = (char) (pc);
+  msg[0] = (char) ((pc-4)>> 24);
+  msg[1] = (char) ((pc-4)>> 16);
+  msg[2] = (char) ((pc-4)>> 8);
+  msg[3] = (char) (pc-4);
 
   printf("-------- raw json to eth installer:----------\n");
   printf("%s\n", msg+4);
@@ -319,10 +361,17 @@ void bs_eth_installer_req_act(struct bs_device_app * app, char *msg, char *paylo
 
   //TODO: 'node' and 'task' configurable. For now, 109 means VDCM
   static char *resp_header[] = {
-"{\"node\":109,\"task\":\"ACTVATE\",\"uuid\":\"803953b3-9beb-11ea-aafa-24418ccef951\",\"category\":0,\"payload\":",
-"{\"node\":109,\"task\":\"ACTVATE\",\"uuid\":\"803953b3-9beb-11ea-aafa-24418ccef952\",\"category\":0,\"payload\":",
-"{\"node\":109,\"task\":\"ACTVATE\",\"uuid\":\"803953b3-9beb-11ea-aafa-24418ccef953\",\"category\":0,\"payload\":",
-"{\"node\":109,\"task\":\"ACTVATE\",\"uuid\":\"803953b3-9beb-11ea-aafa-24418ccef954\",\"category\":0,\"payload\":"
+"{\"node\":109,\"task\":\"ACTVATE\",\"category\":0,\"payload\":",
+"{\"node\":109,\"task\":\"ACTVATE\",\"category\":0,\"payload\":",
+"{\"node\":109,\"task\":\"ACTVATE\",\"category\":0,\"payload\":",
+"{\"node\":109,\"task\":\"ACTVATE\",\"category\":0,\"payload\":"
+  };
+
+  static char *resp_uuid[] = {
+",\"uuid\":\"803953b3-9beb-11ea-aafa-24418ccef951\"",
+",\"uuid\":\"803953b3-9beb-11ea-aafa-24418ccef952\"",
+",\"uuid\":\"803953b3-9beb-11ea-aafa-24418ccef953\"",
+",\"uuid\":\"803953b3-9beb-11ea-aafa-24418ccef954\""
   };
   // first 4 bytes for length
   pc += 4;
@@ -337,19 +386,23 @@ void bs_eth_installer_req_act(struct bs_device_app * app, char *msg, char *paylo
   strcpy(msg + pc, payload);
   pc += strlen(payload);
 
+  // uuid
+  strcpy(msg + pc, resp_uuid[i]);
+  pc += strlen(resp_uuid[i]);
+
   // end }
   strcpy(msg + pc, "}");
   pc += 1;
 
   // to be safe
   msg[pc] = 0;
-  pc += 1;
+//  pc += 1;
 
   // the value of pc is the length
-  msg[0] = (char) (pc>> 24);
-  msg[1] = (char) (pc>> 16);
-  msg[2] = (char) (pc>> 8);
-  msg[3] = (char) (pc);
+  msg[0] = (char) ((pc-4)>> 24);
+  msg[1] = (char) ((pc-4)>> 16);
+  msg[2] = (char) ((pc-4)>> 8);
+  msg[3] = (char) (pc-4);
 
   printf("-------- raw json to eth installer:----------\n");
   printf("%s\n", msg+4);
@@ -367,7 +420,7 @@ void bs_eth_installer_prepare(struct bs_device_app * app, char *msg)
 {
   unsigned int pc = 0;
   //TODO: 'node' and 'task' configurable. For now, 109 means VDCM
-  static char *resp_header = "{\"node\":109,\"task\":\"PREPARE_ACTIVATION\",\"category\":0,\"payload\":{}}";
+  static char *resp_header = "{\"node\":109,\"task\":\"PREPARE_ACTIVATION\",\"category\":0,\"payload\":\"{}\",\"uuid\":\"803953b3-9beb-11ea-aafa-24418ccef954\"}";
   // first 4 bytes for length
   pc += 4;
 
@@ -377,13 +430,13 @@ void bs_eth_installer_prepare(struct bs_device_app * app, char *msg)
 
   // to be safe
   msg[pc] = 0;
-  pc += 1;
+//  pc += 1;
 
   // the value of pc is the length
-  msg[0] = (char) (pc>> 24);
-  msg[1] = (char) (pc>> 16);
-  msg[2] = (char) (pc>> 8);
-  msg[3] = (char) (pc);
+  msg[0] = (char) ((pc-4)>> 24);
+  msg[1] = (char) ((pc-4)>> 16);
+  msg[2] = (char) ((pc-4)>> 8);
+  msg[3] = (char) (pc-4);
 
   printf("-------- raw json to eth installer:----------\n");
   printf("%s\n", msg+4);
@@ -400,7 +453,7 @@ void bs_eth_installer_stat(struct bs_device_app * app, char *msg)
 {
   unsigned int pc = 0;
   //TODO: 'node' and 'task' configurable. For now, 109 means VDCM
-  static char *resp_header = "{\"node\":109,\"task\":\"REQUEST_STATE\",\"category\":0,\"payload\":{}}";
+  static char *resp_header = "{\"node\":109,\"task\":\"REQUEST_STATE\",\"category\":0,\"payload\":\"{}\",\"uuid\":\"803953b3-9beb-11ea-aafa-24418ccef954\"}";
   // first 4 bytes for length
   pc += 4;
 
@@ -410,13 +463,13 @@ void bs_eth_installer_stat(struct bs_device_app * app, char *msg)
 
   // to be safe
   msg[pc] = 0;
-  pc += 1;
+//  pc += 1;
 
   // the value of pc is the length
-  msg[0] = (char) (pc>> 24);
-  msg[1] = (char) (pc>> 16);
-  msg[2] = (char) (pc>> 8);
-  msg[3] = (char) (pc);
+  msg[0] = (char) ((pc-4)>> 24);
+  msg[1] = (char) ((pc-4)>> 16);
+  msg[2] = (char) ((pc-4)>> 8);
+  msg[3] = (char) (pc-4);
 
   printf("-------- raw json to eth installer:----------\n");
   printf("%s\n", msg+4);
