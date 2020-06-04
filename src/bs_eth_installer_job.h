@@ -68,6 +68,7 @@ void bs_eth_installer_req_vers(struct bs_device_app *, char *);
 void bs_eth_installer_prepare(struct bs_device_app *, char *);
 void bs_eth_installer_stat(struct bs_device_app *, char *);
 void bs_eth_installer_req_act(struct bs_device_app *, char *, char *);
+void bs_eth_installer_req_act_pc(struct bs_device_app *);
 
 #ifdef __cplusplus
 }

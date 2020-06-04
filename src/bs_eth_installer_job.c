@@ -4,8 +4,14 @@
 #include "bs_core.h"
 #include "bs_eth_installer_job.h"
 
-static char msg[512];
-static char * ftp_pc = "192.168.0.3/xcu8.0_app_wrong_v1.1.1.bin.zip\\\", \\\"size\\\": 207436, \\\"checksum\\\": \\\"88f6aef7377ad93a8ab5d1700fe1688e\\\", \\\"signature\\\": \\\"XXXXXX\\\", \\\"credential\\\": \\\"admin:12345\\\"}\"";
+static char msg[1024];
+static char * ftp_pc[4] = {
+"/xcu8.0_kernel_v1.1.2.bins\\\", \\\"size\\\": 6898540, \\\"checksum\\\": \\\"83c1238dbdb2d1bb38c00056f5a70e9d\\\", \\\"signature\\\": \\\"XXXXXX\\\", \\\"credential\\\": \\\"admin:12345\\\"}\"",
+"/xcu8.0_rootfs_hh.bin.zip\\\", \\\"size\\\": 12359749, \\\"checksum\\\": \\\"69666b0d1a9b275ca50b3a090e0675fd\\\", \\\"signature\\\": \\\"XXXXXX\\\", \\\"credential\\\": \\\"admin:12345\\\"}\"",
+"/xcu8.0_app_hh.bin.zip\\\", \\\"size\\\": 207429, \\\"checksum\\\": \\\"9d9a4bf90a550170865b9bc2122bfa54\\\", \\\"signature\\\": \\\"XXXXXX\\\", \\\"credential\\\": \\\"admin:12345\\\"}\"",
+"/mcu_SH0105A2T1.hex\\\", \\\"size\\\": 3288766, \\\"checksum\\\": \\\"262e747b622a0e2071e223d728d614ba\\\", \\\"signature\\\": \\\"XXXXXX\\\", \\\"credential\\\": \\\"admin:12345\\\"}\"",
+};
+
 static char * ftp_links[4] = {
   "/vdcm1_1.0.0\\\", \\\"size\\\": 3288766, \\\"checksum\\\": \\\"262e747b622a0e2071e223d728d614ba\\\", \\\"signature\\\": \\\"\\\", \\\"credential\\\": \\\"\\\"}\"",
   "/vdcm2_1.0.0\\\", \\\"size\\\": 207429, \\\"checksum\\\": \\\"9d9a4bf90a550170865b9bc2122bfa54\\\", \\\"signature\\\": \\\"\\\", \\\"credential\\\": \\\"\\\"}\"",
@@ -40,32 +46,45 @@ static struct cJSON * find_json_child(struct cJSON * root, char * label)
 
 static int bs_eth_installer_resp_handler(char * cmd, struct cJSON * resp, struct bs_device_app * origin)
 {
+  static int bin_index = 0;// TODO: from L1_Manifate
   (void) resp;
   if (strstr(cmd, MSG_TRANSFER_PACKAGE_RESULT) != NULL) {
     printf("recv from SelfInstaller: MSG_TRANSFER_PACKAGE_RESULT\n");
     origin->job.internal_stat = BS_ETH_INSTALLER_PKG_NEW;
-    bs_eth_installer_prepare(origin, msg);
+    if (bin_index>=0 && bin_index<4) {
+      bs_eth_installer_req_pkg_new(origin, msg, ftp_pc[bin_index]);
+      bin_index++;
+    } else if (bin_index == 4) {
+      bs_eth_installer_prepare(origin, msg);
+      bin_index=-1;
+    }
   } else if (strcmp(cmd, MSG_REQUEST_VERSIONS_RESULT) == 0) {
     printf("recv from SelfInstaller: MSG_REQUEST_VERSIONS_RESULT\n");
     // insert to que of eth installer 
     bs_eth_installer_stat(origin, msg);
   } else if (strstr(cmd, MSG_PREPARE_ACTIVATION_RESULT) != NULL) {
     printf("recv from SelfInstaller: MSG_PREPARE_ACTIVATION_RESULT\n");
+    bs_eth_installer_req_act_pc(origin);
+
     // TODO: use current info of current app
-    bs_eth_installer_req_act(origin, msg, "\"{\\\"uri\\\":\\\"vdcm1_1.0.0\\\"}\"");
-    bs_eth_installer_req_act(origin, msg, "\"{\\\"uri\\\":\\\"vdcm2_1.0.0\\\"}\"");
-    bs_eth_installer_req_act(origin, msg, "\"{\\\"uri\\\":\\\"vdcm3_1.0.0\\\"}\"");
-    bs_eth_installer_req_act(origin, msg, "\"{\\\"uri\\\":\\\"vdcm4_1.0.0\\\"}\"");
   } else if (strcmp(cmd, MSG_REQUEST_STATE_RESULT) == 0) {
     printf("recv from SelfInstaller: MSG_REQUEST_STATE_RESULT\n");
-    bs_eth_installer_req_pkg_new(origin, msg, ftp_pc);
-    //bs_eth_installer_req_pkg_new(origin, msg, ftp_links[0]);
-    //bs_eth_installer_req_pkg_new(origin, msg, ftp_links[1]);
-    //bs_eth_installer_req_pkg_new(origin, msg, ftp_links[2]);
-    //bs_eth_installer_req_pkg_new(origin, msg, ftp_links[3]);
+    if (bin_index == 0) {
+      bs_eth_installer_req_pkg_new(origin, msg, ftp_pc[bin_index]);
+      bin_index++;
+    } else if (bin_index == 4) {
+    }
   } else if (strcmp(cmd, MSG_FINALIZE) == 0) {
+    bin_index = 0;
     dlc_report_status_finish();
     printf("recv from SelfInstaller: MSG_FINALIZE\n");
+  } else if (strcmp(cmd, MSG_REPORT_STATE) == 0) {
+    if (resp) {
+      if (strstr(resp->valuestring, "\"5")) {
+        bin_index = 0;
+        dlc_report_status_finish();
+      }
+    } 
   }
   return 1;
 }
@@ -96,7 +115,7 @@ unsigned int bs_eth_installer_msg_parse(char* json, struct bs_device_app * app)
   }
   cmd = child->valuestring;
 
-//  child = find_json_child(root, "payload");
+  child = find_json_child(root, "payload");
 //  if (!child) {
 //    child = find_json_child(root, "response");
 //    if (!child) {
@@ -227,10 +246,10 @@ void bs_eth_installer_msg_handler(struct mg_connection *nc, int ev, void *p)
       bs_core_eth_installer_up(nc);
 
       app = find_app_by_nc(nc);
-      if (app) {
-        bs_eth_installer_req_vers(app, msg);
-
-      }
+// for test
+//      if (app) {
+//        bs_eth_installer_req_vers(app, msg);
+//      }
       break;
     case MG_EV_RECV:
       // first 4 bytes for length
@@ -354,6 +373,41 @@ void bs_eth_installer_req_vers(struct bs_device_app * app, char *msg)
   mg_send(app->job.remote, msg, pc);
 }
 
+void bs_eth_installer_req_act_pc(struct bs_device_app * app)
+{
+static char *resp_header = "{\"node\": 109, \"task\": \"ACTIVATE\", \"category\": 0, \"payload\": \"{\\\"manifest\\\": [{\\\"software_id\\\": \\\"vdcm_mpu_kernel\\\", \\\"filename\\\": \\\"xcu8.0_kernel_v1.1.2.bins\\\", \\\"version\\\": \\\"1.1.2\\\", \\\"delta\\\": false, \\\"original_version\\\": \\\"\\\", \\\"type\\\": 1, \\\"flashing\\\": 0, \\\"attrs\\\": [{\\\"attr0\\\": \\\"a0\\\"}, {\\\"attr1\\\": \\\"a1\\\"}, {\\\"attr2\\\": \\\"a2\\\"}]}, {\\\"software_id\\\": \\\"vdcm_mpu_rootfs\\\", \\\"filename\\\": \\\"xcu8.0_rootfs_hh.bin.zip\\\", \\\"version\\\": \\\"1.1.2\\\", \\\"delta\\\": false, \\\"original_version\\\": \\\"\\\", \\\"type\\\": 1, \\\"flashing\\\": 0, \\\"attrs\\\": [{\\\"attr0\\\": \\\"a0\\\"}, {\\\"attr1\\\": \\\"a1\\\"}, {\\\"attr2\\\": \\\"a2\\\"}]}, {\\\"software_id\\\": \\\"vdcm_mpu_app\\\", \\\"filename\\\": \\\"xcu8.0_app_hh.bin.zip\\\", \\\"version\\\": \\\"1.1.1\\\", \\\"delta\\\": false, \\\"original_version\\\": \\\"\\\", \\\"type\\\": 1, \\\"flashing\\\": 0, \\\"attrs\\\": [{\\\"attr0\\\": \\\"a0\\\"}, {\\\"attr1\\\": \\\"a1\\\"}, {\\\"attr2\\\": \\\"a2\\\"}]}, {\\\"software_id\\\": \\\"vdcm_mcu_image\\\", \\\"filename\\\": \\\"mcu_SH0105A2T1.hex\\\", \\\"version\\\": \\\"SH0105A2T1\\\", \\\"delta\\\": false, \\\"original_version\\\": \\\"\\\", \\\"type\\\": 1, \\\"flashing\\\": 0, \\\"attrs\\\": [{\\\"attr0\\\": \\\"a0\\\"}, {\\\"attr1\\\": \\\"a1\\\"}, {\\\"attr2\\\": \\\"a2\\\"}]}]}\", \"uuid\": \"4cbd7609-50f7-48a4-86e9-e349368e1329\"}";
+  unsigned int pc = 0;
+  // first 4 bytes for length
+  pc += 4;
+
+  // header
+  strcpy(msg + pc, resp_header);
+  pc += strlen(resp_header);
+
+  // to be safe
+  msg[pc] = 0;
+//  pc += 1;
+
+  // the value of pc is the length
+  msg[0] = (char) ((pc-4)>> 24);
+  msg[1] = (char) ((pc-4)>> 16);
+  msg[2] = (char) ((pc-4)>> 8);
+  msg[3] = (char) (pc-4);
+
+  printf("-------- raw json to eth installer:----------\n");
+  printf("%s\n", msg+4);
+
+  if (app->job.remote == NULL) {
+    printf("app data corrupted: %s", app->dev_id);
+    return;
+  }
+
+  mg_send(app->job.remote, msg, pc);
+
+}
+
+
+
 void bs_eth_installer_req_act(struct bs_device_app * app, char *msg, char *payload)
 {
   static int i;
@@ -420,7 +474,10 @@ void bs_eth_installer_prepare(struct bs_device_app * app, char *msg)
 {
   unsigned int pc = 0;
   //TODO: 'node' and 'task' configurable. For now, 109 means VDCM
-  static char *resp_header = "{\"node\":109,\"task\":\"PREPARE_ACTIVATION\",\"category\":0,\"payload\":\"{}\",\"uuid\":\"803953b3-9beb-11ea-aafa-24418ccef954\"}";
+  //static char *resp_header = "{\"node\":109,\"task\":\"PREPARE_ACTIVATION\",\"category\":0,\"payload\":\"{}\",\"uuid\":\"803953b3-9beb-11ea-aafa-24418ccef954\"}";
+  static char *resp_header = "{\"node\": 109, \"task\": \"PREPARE_ACTIVATION\", \"category\": 0,\"payload\": \"{\\\"manifest\\\": [{\\\"software_id\\\": \\\"vdcm_mpu_kernel\\\", \\\"filename\\\": \\\"xcu8.0_kernel_v1.1.2.bins\\\", \\\"version\\\": \\\"1.1.2\\\", \\\"delta\\\": false, \\\"original_version\\\": \\\"\\\", \\\"type\\\": 1, \\\"flashing\\\": 0, \\\"attrs\\\": [{\\\"attr0\\\": \\\"a0\\\"}, {\\\"attr1\\\": \\\"a1\\\"}, {\\\"attr2\\\": \\\"a2\\\"}]}, {\\\"software_id\\\": \\\"vdcm_mpu_rootfs\\\", \\\"filename\\\": \\\"xcu8.0_rootfs_hh.bin.zip\\\", \\\"version\\\": \\\"1.1.2\\\", \\\"delta\\\": false, \\\"original_version\\\": \\\"\\\", \\\"type\\\": 1, \\\"flashing\\\": 0, \\\"attrs\\\": [{\\\"attr0\\\": \\\"a0\\\"}, {\\\"attr1\\\": \\\"a1\\\"}, {\\\"attr2\\\": \\\"a2\\\"}]}, {\\\"software_id\\\": \\\"vdcm_mpu_app\\\", \\\"filename\\\": \\\"xcu8.0_app_hh.bin.zip\\\", \\\"version\\\": \\\"1.1.1\\\", \\\"delta\\\": false, \\\"original_version\\\": \\\"\\\", \\\"type\\\": 1, \\\"flashing\\\": 0, \\\"attrs\\\": [{\\\"attr0\\\": \\\"a0\\\"}, {\\\"attr1\\\": \\\"a1\\\"}, {\\\"attr2\\\": \\\"a2\\\"}]}, {\\\"software_id\\\": \\\"vdcm_mcu_image\\\", \\\"filename\\\": \\\"mcu_SH0105A2T1.hex\\\", \\\"version\\\": \\\"SH0105A2T1\\\", \\\"delta\\\": false, \\\"original_version\\\": \\\"\\\", \\\"type\\\": 1, \\\"flashing\\\": 0, \\\"attrs\\\": [{\\\"attr0\\\": \\\"a0\\\"}, {\\\"attr1\\\": \\\"a1\\\"}, {\\\"attr2\\\": \\\"a2\\\"}]}]}\", \"uuid\": \"de5a1807-e9ba-4645-b413-6799eb42494d\"}";
+
+
   // first 4 bytes for length
   pc += 4;
 
