@@ -5,19 +5,13 @@
 #include "bs_eth_installer_job.h"
 
 static char msg[1024];
-static char * ftp_pc[4] = {
+static char * ftp_links[4] = {
 "/xcu8.0_kernel_v1.1.2.bins\\\", \\\"size\\\": 6898540, \\\"checksum\\\": \\\"83c1238dbdb2d1bb38c00056f5a70e9d\\\", \\\"signature\\\": \\\"XXXXXX\\\", \\\"credential\\\": \\\"admin:12345\\\"}\"",
 "/xcu8.0_rootfs_hh.bin.zip\\\", \\\"size\\\": 12359749, \\\"checksum\\\": \\\"69666b0d1a9b275ca50b3a090e0675fd\\\", \\\"signature\\\": \\\"XXXXXX\\\", \\\"credential\\\": \\\"admin:12345\\\"}\"",
 "/xcu8.0_app_hh.bin.zip\\\", \\\"size\\\": 207429, \\\"checksum\\\": \\\"9d9a4bf90a550170865b9bc2122bfa54\\\", \\\"signature\\\": \\\"XXXXXX\\\", \\\"credential\\\": \\\"admin:12345\\\"}\"",
 "/mcu_SH0105A2T1.hex\\\", \\\"size\\\": 3288766, \\\"checksum\\\": \\\"262e747b622a0e2071e223d728d614ba\\\", \\\"signature\\\": \\\"XXXXXX\\\", \\\"credential\\\": \\\"admin:12345\\\"}\"",
 };
 
-static char * ftp_links[4] = {
-  "/vdcm1_1.0.0\\\", \\\"size\\\": 3288766, \\\"checksum\\\": \\\"262e747b622a0e2071e223d728d614ba\\\", \\\"signature\\\": \\\"\\\", \\\"credential\\\": \\\"\\\"}\"",
-  "/vdcm2_1.0.0\\\", \\\"size\\\": 207429, \\\"checksum\\\": \\\"9d9a4bf90a550170865b9bc2122bfa54\\\", \\\"signature\\\": \\\"\\\", \\\"credential\\\": \\\"\\\"}\"",
-  "/vdcm3_1.0.0\\\", \\\"size\\\": 6898540, \\\"checksum\\\": \\\"83c1238dbdb2d1bb38c00056f5a70e9d\\\", \\\"signature\\\": \\\"\\\", \\\"credential\\\": \\\"\\\"}\"",
-  "/vdcm4_1.0.0\\\", \\\"size\\\": 12359749, \\\"checksum\\\": \\\"69666b0d1a9b275ca50b3a090e0675fd\\\", \\\"signature\\\": \\\"\\\", \\\"credential\\\": \\\"\\\"}\""
-};
 //struct mg_connection * find_remote (struct mg_connection * nc)
 //{
 //  char addr[32];
@@ -52,7 +46,7 @@ static int bs_eth_installer_resp_handler(char * cmd, struct cJSON * resp, struct
     printf("recv from SelfInstaller: MSG_TRANSFER_PACKAGE_RESULT\n");
     origin->job.internal_stat = BS_ETH_INSTALLER_PKG_NEW;
     if (bin_index>=0 && bin_index<4) {
-      bs_eth_installer_req_pkg_new(origin, msg, ftp_pc[bin_index]);
+      bs_eth_installer_req_pkg_new(origin, msg, ftp_links[bin_index]);
       bin_index++;
     } else if (bin_index == 4) {
       bs_eth_installer_prepare(origin, msg);
@@ -64,13 +58,13 @@ static int bs_eth_installer_resp_handler(char * cmd, struct cJSON * resp, struct
     bs_eth_installer_stat(origin, msg);
   } else if (strstr(cmd, MSG_PREPARE_ACTIVATION_RESULT) != NULL) {
     printf("recv from SelfInstaller: MSG_PREPARE_ACTIVATION_RESULT\n");
-    bs_eth_installer_req_act_pc(origin);
+    bs_eth_installer_req_act(origin);
 
     // TODO: use current info of current app
   } else if (strcmp(cmd, MSG_REQUEST_STATE_RESULT) == 0) {
     printf("recv from SelfInstaller: MSG_REQUEST_STATE_RESULT\n");
     if (bin_index == 0) {
-      bs_eth_installer_req_pkg_new(origin, msg, ftp_pc[bin_index]);
+      bs_eth_installer_req_pkg_new(origin, msg, ftp_links[bin_index]);
       bin_index++;
     } else if (bin_index == 4) {
     }
@@ -151,10 +145,7 @@ unsigned int bs_eth_installer_core_msg_parse(struct bs_eth_installer_core_reques
 
   switch(req->cmd) {
     case BS_ETH_INSTALLER_PKG_NEW:
-      bs_eth_installer_req_pkg_new(req->app, msg, ftp_links[0]);
-      bs_eth_installer_req_pkg_new(req->app, msg, ftp_links[1]);
-      bs_eth_installer_req_pkg_new(req->app, msg, ftp_links[2]);
-      bs_eth_installer_req_pkg_new(req->app, msg, ftp_links[3]);
+      //bs_eth_installer_req_pkg_new(req->app, msg, ftp_links[0]);
       break;
     case BS_ETH_INSTALLER_VER:
       break;
@@ -164,15 +155,6 @@ unsigned int bs_eth_installer_core_msg_parse(struct bs_eth_installer_core_reques
     case BS_ETH_INSTALLER_VERS:
       bs_eth_installer_req_vers(req->app, msg);
       //TODO: in real world, should be trigred by HMI?  
-      //bs_eth_installer_req_pkg_new(req, msg, ftp_links[0]);
-      //bs_eth_installer_req_pkg_new(req, msg, ftp_links[1]);
-      //bs_eth_installer_req_pkg_new(req, msg, ftp_links[2]);
-      //bs_eth_installer_req_pkg_new(req, msg, ftp_links[3]);
-      //bs_eth_installer_prepare(req, msg);
-      //bs_eth_installer_req_act(req, msg, "{\"uri\":\"vdcm1_1.0.0\"}");
-      //bs_eth_installer_req_act(req, msg, "{\"uri\":\"vdcm2_1.0.0\"}");
-      //bs_eth_installer_req_act(req, msg, "{\"uri\":\"vdcm3_1.0.0\"}");
-      //bs_eth_installer_req_act(req, msg, "{\"uri\":\"vdcm4_1.0.0\"}");
       break;
     case BS_ETH_INSTALLER_ROLLBACK:
       break;
@@ -276,7 +258,6 @@ void bs_eth_installer_msg_handler(struct mg_connection *nc, int ev, void *p)
   }
 }
 
-
 void bs_eth_installer_req_pkg_new(struct bs_device_app * app, char *msg, char* payload)
 {
   static int i; //just for temp uuid
@@ -288,13 +269,6 @@ void bs_eth_installer_req_pkg_new(struct bs_device_app * app, char *msg, char* p
 "{\"node\":109,\"task\":\"TRANSFER_PACKAGE\",\"uuid\":\"813953b3-9beb-11ea-aafa-24418ccef951\",\"category\":0,\"payload\":\"{\\\"uri\\\":\\\"ftp://",
 "{\"node\":109,\"task\":\"TRANSFER_PACKAGE\",\"uuid\":\"813953b3-9beb-11ea-aafa-24418ccef951\",\"category\":0,\"payload\":\"{\\\"uri\\\":\\\"ftp://"};
 
-//  static char *resp_uuid[] = {
-//",\"uuid\":\"813953b3-9beb-11ea-aafa-24418ccef951\"",
-//",\"uuid\":\"823953b3-9beb-11ea-aafa-24418ccef952\"",
-//",\"uuid\":\"833953b3-9beb-11ea-aafa-24418ccef953\"",
-//",\"uuid\":\"843953b3-9beb-11ea-aafa-24418ccef954\""
-//  };
- 
   // first 4 bytes for length
   pc += 4;
 
@@ -304,16 +278,12 @@ void bs_eth_installer_req_pkg_new(struct bs_device_app * app, char *msg, char* p
   pc += strlen(resp_header[i]);
 
   // ip addr
-//  strcpy(msg+pc, bs_get_core_ctx()->tlc_ip);
-//  pc += strlen(bs_get_core_ctx()->tlc_ip);
+  strcpy(msg+pc, bs_get_core_ctx()->tlc_ip);
+  pc += strlen(bs_get_core_ctx()->tlc_ip);
 
   //payload 
   strcpy(msg + pc, payload);
   pc += strlen(payload);
-
-  // uuid
-//  strcpy(msg + pc, resp_uuid[i]);
-//  pc += strlen(resp_uuid[i]);
 
   // end }
   strcpy(msg + pc, "}");
@@ -373,7 +343,7 @@ void bs_eth_installer_req_vers(struct bs_device_app * app, char *msg)
   mg_send(app->job.remote, msg, pc);
 }
 
-void bs_eth_installer_req_act_pc(struct bs_device_app * app)
+void bs_eth_installer_req_act(struct bs_device_app * app)
 {
 static char *resp_header = "{\"node\": 109, \"task\": \"ACTIVATE\", \"category\": 0, \"payload\": \"{\\\"manifest\\\": [{\\\"software_id\\\": \\\"vdcm_mpu_kernel\\\", \\\"filename\\\": \\\"xcu8.0_kernel_v1.1.2.bins\\\", \\\"version\\\": \\\"1.1.2\\\", \\\"delta\\\": false, \\\"original_version\\\": \\\"\\\", \\\"type\\\": 1, \\\"flashing\\\": 0, \\\"attrs\\\": [{\\\"attr0\\\": \\\"a0\\\"}, {\\\"attr1\\\": \\\"a1\\\"}, {\\\"attr2\\\": \\\"a2\\\"}]}, {\\\"software_id\\\": \\\"vdcm_mpu_rootfs\\\", \\\"filename\\\": \\\"xcu8.0_rootfs_hh.bin.zip\\\", \\\"version\\\": \\\"1.1.2\\\", \\\"delta\\\": false, \\\"original_version\\\": \\\"\\\", \\\"type\\\": 1, \\\"flashing\\\": 0, \\\"attrs\\\": [{\\\"attr0\\\": \\\"a0\\\"}, {\\\"attr1\\\": \\\"a1\\\"}, {\\\"attr2\\\": \\\"a2\\\"}]}, {\\\"software_id\\\": \\\"vdcm_mpu_app\\\", \\\"filename\\\": \\\"xcu8.0_app_hh.bin.zip\\\", \\\"version\\\": \\\"1.1.1\\\", \\\"delta\\\": false, \\\"original_version\\\": \\\"\\\", \\\"type\\\": 1, \\\"flashing\\\": 0, \\\"attrs\\\": [{\\\"attr0\\\": \\\"a0\\\"}, {\\\"attr1\\\": \\\"a1\\\"}, {\\\"attr2\\\": \\\"a2\\\"}]}, {\\\"software_id\\\": \\\"vdcm_mcu_image\\\", \\\"filename\\\": \\\"mcu_SH0105A2T1.hex\\\", \\\"version\\\": \\\"SH0105A2T1\\\", \\\"delta\\\": false, \\\"original_version\\\": \\\"\\\", \\\"type\\\": 1, \\\"flashing\\\": 0, \\\"attrs\\\": [{\\\"attr0\\\": \\\"a0\\\"}, {\\\"attr1\\\": \\\"a1\\\"}, {\\\"attr2\\\": \\\"a2\\\"}]}]}\", \"uuid\": \"4cbd7609-50f7-48a4-86e9-e349368e1329\"}";
   unsigned int pc = 0;
@@ -405,70 +375,6 @@ static char *resp_header = "{\"node\": 109, \"task\": \"ACTIVATE\", \"category\"
   mg_send(app->job.remote, msg, pc);
 
 }
-
-
-
-void bs_eth_installer_req_act(struct bs_device_app * app, char *msg, char *payload)
-{
-  static int i;
-  unsigned int pc = 0;
-
-  //TODO: 'node' and 'task' configurable. For now, 109 means VDCM
-  static char *resp_header[] = {
-"{\"node\":109,\"task\":\"ACTVATE\",\"category\":0,\"payload\":",
-"{\"node\":109,\"task\":\"ACTVATE\",\"category\":0,\"payload\":",
-"{\"node\":109,\"task\":\"ACTVATE\",\"category\":0,\"payload\":",
-"{\"node\":109,\"task\":\"ACTVATE\",\"category\":0,\"payload\":"
-  };
-
-  static char *resp_uuid[] = {
-",\"uuid\":\"803953b3-9beb-11ea-aafa-24418ccef951\"",
-",\"uuid\":\"803953b3-9beb-11ea-aafa-24418ccef952\"",
-",\"uuid\":\"803953b3-9beb-11ea-aafa-24418ccef953\"",
-",\"uuid\":\"803953b3-9beb-11ea-aafa-24418ccef954\""
-  };
-  // first 4 bytes for length
-  pc += 4;
-
-  i = (i+1)%4;
-  
-  // header
-  strcpy(msg + pc, resp_header[i]);
-  pc += strlen(resp_header[i]);
-
-  // payload
-  strcpy(msg + pc, payload);
-  pc += strlen(payload);
-
-  // uuid
-  strcpy(msg + pc, resp_uuid[i]);
-  pc += strlen(resp_uuid[i]);
-
-  // end }
-  strcpy(msg + pc, "}");
-  pc += 1;
-
-  // to be safe
-  msg[pc] = 0;
-//  pc += 1;
-
-  // the value of pc is the length
-  msg[0] = (char) ((pc-4)>> 24);
-  msg[1] = (char) ((pc-4)>> 16);
-  msg[2] = (char) ((pc-4)>> 8);
-  msg[3] = (char) (pc-4);
-
-  printf("-------- raw json to eth installer:----------\n");
-  printf("%s\n", msg+4);
-
-  if (app->job.remote == NULL) {
-    printf("app data corrupted: %s", app->dev_id);
-    return;
-  }
-
-  mg_send(app->job.remote, msg, pc);
-}
-
 
 void bs_eth_installer_prepare(struct bs_device_app * app, char *msg)
 {
