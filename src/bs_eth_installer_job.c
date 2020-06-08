@@ -5,6 +5,21 @@
 #include "bs_eth_installer_job.h"
 
 static char msg[1024];
+
+//TODO: remove it
+static char g_vers[512];
+static int g_get_vers_flag = 1;
+const char * bs_get_vers()
+{
+  return g_vers;
+}
+
+void bs_set_get_vers_flag(int v)
+{
+  g_get_vers_flag = v;
+}
+
+
 static char * ftp_links[4] = {
 "/xcu8.0_kernel_v1.1.2.bins\\\", \\\"size\\\": 6898540, \\\"checksum\\\": \\\"83c1238dbdb2d1bb38c00056f5a70e9d\\\", \\\"signature\\\": \\\"XXXXXX\\\", \\\"credential\\\": \\\"admin:12345\\\"}\"",
 "/xcu8.0_rootfs_hh.bin.zip\\\", \\\"size\\\": 12359749, \\\"checksum\\\": \\\"69666b0d1a9b275ca50b3a090e0675fd\\\", \\\"signature\\\": \\\"XXXXXX\\\", \\\"credential\\\": \\\"admin:12345\\\"}\"",
@@ -41,7 +56,6 @@ static struct cJSON * find_json_child(struct cJSON * root, char * label)
 static int bs_eth_installer_resp_handler(char * cmd, struct cJSON * resp, struct bs_device_app * origin)
 {
   static int bin_index = 0;// TODO: from L1_Manifate
-  (void) resp;
   if (strstr(cmd, MSG_TRANSFER_PACKAGE_RESULT) != NULL) {
     printf("recv from SelfInstaller: MSG_TRANSFER_PACKAGE_RESULT\n");
     origin->job.internal_stat = BS_ETH_INSTALLER_PKG_NEW;
@@ -55,7 +69,14 @@ static int bs_eth_installer_resp_handler(char * cmd, struct cJSON * resp, struct
   } else if (strcmp(cmd, MSG_REQUEST_VERSIONS_RESULT) == 0) {
     printf("recv from SelfInstaller: MSG_REQUEST_VERSIONS_RESULT\n");
     // insert to que of eth installer 
-    bs_eth_installer_stat(origin, msg);
+    printf("get versions of VDCM: %s \n", resp->valuestring);
+    if (g_get_vers_flag) {
+      strcpy(g_vers, resp->valuestring);
+      bs_set_get_vers_flag(0);
+    } else  {
+      strcpy(g_vers, resp->valuestring);
+      bs_eth_installer_stat(origin, msg);
+    }
   } else if (strstr(cmd, MSG_PREPARE_ACTIVATION_RESULT) != NULL) {
     printf("recv from SelfInstaller: MSG_PREPARE_ACTIVATION_RESULT\n");
     bs_eth_installer_req_act(origin);
@@ -228,10 +249,11 @@ void bs_eth_installer_msg_handler(struct mg_connection *nc, int ev, void *p)
       bs_core_eth_installer_up(nc);
 
       app = find_app_by_nc(nc);
-// for test
-//      if (app) {
-//        bs_eth_installer_req_vers(app, msg);
-//      }
+
+      if (app) {
+        bs_set_get_vers_flag(1);
+        bs_eth_installer_req_vers(app, msg);
+      }
       break;
     case MG_EV_RECV:
       // first 4 bytes for length

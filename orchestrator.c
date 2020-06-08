@@ -55,12 +55,28 @@ static void handle_test_live(struct mg_connection *nc, int ev, void *p) {
     return;
   }
 
-  dlc_report_status_start();
-  dlc_report_status_finish();
-  dlc_report_status_down();
+  //dlc_report_status_start();
+  //dlc_report_status_finish();
+  //dlc_report_status_down();
 
   mg_printf(nc, "%s", "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n");
   mg_printf_http_chunk(nc, "{ \"result\": \"live\" }");
+  mg_send_http_chunk(nc, "", 0); /* Send empty chunk, the end of response */
+}
+
+// for ECU versions testing
+static void handle_test_vers(struct mg_connection *nc, int ev, void *p) {
+  static char msg[512];
+
+  (void) ev;
+  (void) p;
+
+  bs_set_get_vers_flag(1);
+
+  bs_eth_installer_req_vers(&(bs_get_core_ctx()->apps[1]), msg);
+
+  mg_printf(nc, "%s", "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n");
+  mg_printf_http_chunk(nc, "{ \"result\": \"%s\" }", bs_get_vers());
   mg_send_http_chunk(nc, "", 0); /* Send empty chunk, the end of response */
 }
 
@@ -448,6 +464,7 @@ int main(int argc, char *argv[]) {
   // Register endpoints
   mg_register_http_endpoint(nc, "/upload", handle_upload MG_UD_ARG(NULL));
   mg_register_http_endpoint(nc, "/test/live", handle_test_live MG_UD_ARG(NULL));
+  mg_register_http_endpoint(nc, "/test/vers", handle_test_vers MG_UD_ARG(NULL));
   mg_register_http_endpoint(nc, "/pkg/new", handle_pkg_new MG_UD_ARG(NULL));
   mg_register_http_endpoint(nc, "/pkg/stat", handle_pkg_stat MG_UD_ARG(NULL));
   mg_register_http_endpoint(nc, "/tdr/run", handle_tdr_run MG_UD_ARG(NULL));

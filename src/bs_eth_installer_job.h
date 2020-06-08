@@ -8,6 +8,10 @@
 extern "C" {
 #endif /* __cplusplus */
 
+const char* bs_get_vers(); // TODO:remove it
+void bs_set_get_vers_flag(int v);
+
+
 union bs_eth_installer_request_data {
   struct bs_app_upgrade_stat stat;
   char info[128];
