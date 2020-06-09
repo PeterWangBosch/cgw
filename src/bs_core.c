@@ -1,4 +1,6 @@
 #include "bs_core.h"
+
+#include "src/bs_cgw_utils.h"
 #include "bs_eth_installer_job.h"
 #include "bs_tdr_job.h"
 #include "file_utils.h"
@@ -202,7 +204,7 @@ void bs_core_init_ctx(const char * conf_file)
   }
 
   //init from config.ini
-  bs_init_app_config(filename);
+  //bs_load_app_config(filename, g_ctx.apps, BS_MAX_DEVICE_APP_NUM);
 
   // TODO: just for NCT.
   bs_init_device_app(g_ctx.apps);
@@ -219,6 +221,8 @@ void bs_core_init_ctx(const char * conf_file)
   g_ctx.apps[2].pkg_stat.type = BS_PKG_TYPE_CAN_ECU;
   g_ctx.apps[2].pkg_stat.stat = bs_pkg_stat_idle;
   strcpy(g_ctx.apps[2].pkg_stat.name, "/data/var/orchestrator/wpc.1.0.0");
+
+  bs_save_app_config(filename, g_ctx.apps, BS_MAX_DEVICE_APP_NUM);
 }
 
 void bs_core_exit_ctx()
