@@ -5,11 +5,64 @@
 #include "file_utils.h"
 #include "cJSON/cJSON.h"
 
+#define W_JCHR(C)                                                       \
+    do {                                                                \
+        w_ptr[0] = C;                                                   \
+        spac_len -= 1;                                                  \
+        w_ptr += 1;                                                 \
+    }while(0)
+
+#define W_JBUF(KEY, BUF)                                                \
+    do {                                                                \
+        if (BUF[sizeof(BUF)-1] != 0) BUF[sizeof(BUF)-1] = 0;            \
+        int siz =  snprintf(w_ptr, spac_len, "\"%s\":\"%s\"", KEY, BUF);\
+        spac_len -= siz;                                                \
+        w_ptr += siz;                                               \
+    }while(0)
+
+#define W_JSTR(KEY, STR)                                                \
+    do {                                                                \
+        int siz =  snprintf(w_ptr, spac_len, "\"%s\":\"%s\"", KEY, STR);\
+        spac_len -= siz;                                                \
+        w_ptr += siz;                                               \
+    }while(0)
+
+#define W_JSTR_AS_OBJ(KEY, STR)                                         \
+    do {                                                                \
+        int siz =  snprintf(w_ptr, spac_len, "\"%s\":%s", KEY, STR);    \
+        spac_len -= siz;                                                \
+        w_ptr += siz;                                               \
+    }while(0)
+
+#define W_JINT(KEY, INT)                                                \
+    do {                                                                \
+        int siz =  snprintf(w_ptr, spac_len, "\"%s\":%d", KEY, INT);    \
+        spac_len -= siz;                                                \
+        w_ptr += siz;                                               \
+    }while(0)
+
+#define W_JFLT(KEY, FLT)                                                \
+    do {                                                                \
+        int siz =  snprintf(w_ptr, spac_len, "\"%s\":%f", KEY, FLT);    \
+        spac_len -= siz;                                                \
+        w_ptr += siz;                                               \
+    }while(0)
+
+#define W_JOBJ_ENT(NAM)                                                 \
+    do {                                                                \
+        int siz =  snprintf(w_ptr, spac_len, "\"%s\":{", NAM);          \
+        spac_len -= siz;                                                \
+        w_ptr += siz;                                               \
+    } while (0)
+
 
 int bs_load_app_config(const char* file_name, bs_device_app_t apps[], int max_app)
 {
     FILE* fp = NULL;
     char* cfg = NULL;
+    struct cJSON* j_root = NULL;
+
+
     int rc = JCFG_ERR_OK;
     int MAX_CFG_TXT_LEN = BS_CFG_MAX_APP_TXT_LEN * max_app;
 
@@ -19,23 +72,28 @@ int bs_load_app_config(const char* file_name, bs_device_app_t apps[], int max_ap
         goto DONE;
     }
 
-    cfg = malloc(MAX_CFG_TXT_LEN);
+    cfg = malloc(MAX_CFG_TXT_LEN+1);
     if (cfg == NULL) {
         fprintf(stderr, "ERR:INIT_APP_CFG:failed to alloc mem.\n");
         rc = JCFG_ERR_ALLOC_MEM_FAIL;
         goto DONE;
     }
 
-    rc = fread(cfg, 1, MAX_CFG_TXT_LEN - 1, fp);
+    rc = fread(cfg, 1, MAX_CFG_TXT_LEN, fp);
     if (!rc) {
         fprintf(stderr, "ERR:INIT_APP_CFG:failed to read config text(%d).\n", errno);
         rc = JCFG_ERR_SYSTEM_CALL_FAIL;
         goto DONE;
     }
+    if (rc >= MAX_CFG_TXT_LEN) {
+        fprintf(stderr, "ERR:INIT_APP_CFG:config txt to large.\n");
+        rc = JCFG_ERR_BAD_DOCUMENT;
+        goto DONE;
+    }
+
     cfg[rc] = '\0';
     //fprintf(stdout, "INF:INIT_APP_CFG:load config text:\n%s\n", cfg);
 
-    struct cJSON* j_root = NULL;
     j_root = cJSON_Parse(cfg);
     if (j_root == NULL) {
         fprintf(stderr, "ERR:INIT_APP_CFG:failed to parse config text\n");
@@ -161,56 +219,11 @@ int bs_save_app_config(const char* filename, bs_device_app_t apps[], int max_app
     }
 
     size_t spac_len = MAX_CFG_TXT_LEN - 1;
-    memset(cfg, 0, spac_len);
+    memset(cfg, 0, MAX_CFG_TXT_LEN);
 
-#define W_JCHR(C)                                                       \
-    do {                                                                \
-        w_ptr[0] = C;                                                   \
-        spac_len -= 1;                                                  \
-        w_ptr += 1;                                                 \
-    }while(0)
-
-#define W_JBUF(KEY, BUF)                                                \
-    do {                                                                \
-        if (BUF[sizeof(BUF)-1] != 0) BUF[sizeof(BUF)-1] = 0;            \
-        siz =  snprintf(w_ptr, spac_len, "\"%s\":\"%s\"", KEY, BUF);    \
-        spac_len -= siz;                                                \
-        w_ptr += siz;                                               \
-    }while(0)
-
-#define W_JSTR(KEY, STR)                                                \
-    do {                                                                \
-        siz =  snprintf(w_ptr, spac_len, "\"%s\":\"%s\"", KEY, STR);    \
-        spac_len -= siz;                                                \
-        w_ptr += siz;                                               \
-    }while(0)
-
-#define W_JINT(KEY, INT)                                                \
-    do {                                                                \
-        siz =  snprintf(w_ptr, spac_len, "\"%s\":%d", KEY, INT);        \
-        spac_len -= siz;                                                \
-        w_ptr += siz;                                               \
-    }while(0)
-
-#define W_JFLT(KEY, FLT)                                                \
-    do {                                                                \
-        siz =  snprintf(w_ptr, spac_len, "\"%s\":%f", KEY, FLT);        \
-        spac_len -= siz;                                                \
-        w_ptr += siz;                                               \
-    }while(0)
-
-#define W_JOBJ_ENT(NAM)                                                 \
-    do {                                                                \
-            siz = snprintf(w_ptr, spac_len, "\"%s\":{", NAM);           \
-            spac_len -= siz;                                            \
-            w_ptr += siz;                                        \
-    } while (0)
 
     char* w_ptr = cfg;
-    w_ptr[0] = '[';
-    --spac_len;
-    ++w_ptr;
-    int siz = 0;
+    W_JCHR('[');
     int app_n = 0;
     {
         for (int i = 0; i < max_app; ++i) {
@@ -222,7 +235,7 @@ int bs_save_app_config(const char* filename, bs_device_app_t apps[], int max_app
             if (spac_len < BS_CFG_MAX_APP_TXT_LEN)
                 break;
 
-            if (app_n > 1)
+            if (app_n > 0)
                 W_JCHR(',');
 
             W_JCHR('{');
@@ -254,10 +267,11 @@ int bs_save_app_config(const char* filename, bs_device_app_t apps[], int max_app
             ++app_n;
         }
     }
-    w_ptr[0] = ']';
+    W_JCHR(']');
+    W_JCHR('\0');
 
-    size_t w_len = fwrite(cfg, 1, strlen(cfg) + 1, fp);
-    if (w_len != strlen(cfg) + 1) {
+    size_t w_len = fwrite(cfg, 1, strlen(cfg), fp);
+    if (w_len != strlen(cfg)) {
         fprintf(stderr, "ERR:SAVE_APP_CFG:write to file error:%d.\n", errno);
         rc = JCFG_ERR_SYSTEM_CALL_FAIL;
         goto DONE;
@@ -272,3 +286,276 @@ DONE:
     return (rc);
 }
 
+static int bs_parse_l1_manifest(struct cJSON* root, bs_l1_manifest_t* l1_mani)
+{
+    struct cJSON* manifest = NULL;
+    struct cJSON* packages = NULL;
+    int rc = JCFG_ERR_OK;
+
+    manifest = cJSON_GetObjectItem(root, "manifest");
+    if (!cJSON_IsObject(manifest)) {
+        fprintf(stderr, "[/manifest] object not find");
+        rc = JCFG_ERR_BAD_DOCUMENT;
+        goto DONE;
+    }
+    packages = cJSON_GetObjectItem(manifest, "packages");
+    if (!cJSON_IsArray(packages)) {
+        fprintf(stderr, "[/manifest/packages] array not find");
+        rc = JCFG_ERR_BAD_DOCUMENT;
+        goto DONE;
+    }
+
+    if (cJSON_GetArraySize(packages) > BS_MAX_MANI_PKG_NUM) {
+        fprintf(stderr,
+            "[/manifest/packages].size=%d larger then limit=%d",
+            cJSON_GetArraySize(packages), BS_MAX_MANI_PKG_NUM);
+        rc = JCFG_ERR_BAD_DOCUMENT;
+        goto DONE;
+    }
+    for (int i = 0; i < cJSON_GetArraySize(packages); ++i) {
+        struct cJSON* jpkg = cJSON_GetArrayItem(packages, i);
+        assert(jpkg);
+
+        struct cJSON* ecu = cJSON_GetObjectItem(jpkg, "ecu");
+        if (!cJSON_IsString(ecu)) {
+            fprintf(stderr,
+                "[/manifest/packages/[%d]/ecu]] string element not find", i + 1);
+            rc = JCFG_ERR_BAD_DOCUMENT;
+            goto DONE;
+        }
+        struct cJSON* typ = cJSON_GetObjectItem(jpkg, "deviceType");
+        if (!cJSON_IsString(typ)) {
+            fprintf(stderr,
+                "[/manifest/packages/[%d]/deviceType]] string element not find", i + 1);
+            rc = JCFG_ERR_BAD_DOCUMENT;
+            goto DONE;
+        }
+        struct cJSON* res = cJSON_GetObjectItem(jpkg, "resources");
+        if (!cJSON_IsObject(res)) {
+            fprintf(stderr,
+                "[/manifest/packages/[%d]/resources]] object not find", i + 1);
+            rc = JCFG_ERR_BAD_DOCUMENT;
+            goto DONE;
+        }
+        struct cJSON* sum = cJSON_GetObjectItem(res, "fullDownloadChecksum");
+        if (!cJSON_IsString(sum)) {
+            fprintf(stderr,
+                "[/manifest/packages/[%d]/resources/fullDownloadChecksum]] string element not find", i + 1);
+            rc = JCFG_ERR_BAD_DOCUMENT;
+            goto DONE;
+        }
+        struct cJSON* url = cJSON_GetObjectItem(res, "fullDownloadUrl");
+        if (!cJSON_IsString(url)) {
+            fprintf(stderr,
+                "[/manifest/packages/[%d]/resources/fullDownloadUrl]] string element not find", i + 1);
+            rc = JCFG_ERR_BAD_DOCUMENT;
+            goto DONE;
+        }
+        struct cJSON* siz = cJSON_GetObjectItem(res, "fullSize");
+        if (!cJSON_IsNumber(siz)) {
+            fprintf(stderr,
+                "[/manifest/packages/[%d]/resources/fullSize]] number element not find", i + 1);
+            rc = JCFG_ERR_BAD_DOCUMENT;
+            goto DONE;
+        }
+
+
+        bs_l1_manifest_pkg_t* pkg = &l1_mani->packages[i];
+        if (!strcmp("eth", typ->valuestring)) {
+            pkg->dev_type = BS_DEV_TYPE_ETH;
+        }
+        else if (!strcmp("can", typ->valuestring)) {
+            pkg->dev_type = BS_DEV_TYPE_CAN;
+        }
+        else if (!strcmp("can-fd", typ->valuestring)) {
+            pkg->dev_type = BS_DEV_TYPE_CAN_FD;
+        }
+        else {
+            fprintf(stderr,
+                "[/manifest/packages/[%d]/deviceType=%s]] can be recognized",
+                i + 1, typ->valuestring);
+            rc = JCFG_ERR_BAD_DOCUMENT;
+            goto DONE;
+        }
+
+        strncpy(pkg->dev_id, ecu->valuestring, BS_MAX_DEV_ID_LEN);
+        strncpy(pkg->pkg_url, url->valuestring, BS_MAX_PKG_URL_LEN);
+        strncpy(pkg->chk_sum, sum->valuestring, BS_PKG_CHK_SUM_LEN);
+        pkg->pkg_siz = siz->valueint;
+
+        //
+        l1_mani->pkg_num++;
+
+    }//foreach pkg in packages
+
+DONE:
+    return (rc);
+}
+
+int bs_store_and_parse_l1_manifest(const char* json_txt, bs_l1_manifest_t* l1_mani)
+{
+    assert(json_txt);
+    assert(l1_mani);
+
+    fprintf(stdout, "--- parse l1_manifest enter -----\n");
+    fprintf(stdout, "%s", json_txt);
+    fprintf(stdout, "---------------------------------\n");
+
+    int rc = JCFG_ERR_OK;
+    memset(l1_mani, 0, sizeof(bs_l1_manifest_t));
+    l1_mani->pkg_num = 0;
+    //
+    SAFE_CPY_STR(l1_mani->mani_txt, json_txt, BS_CFG_MAX_MANI_TXT_LEN);
+
+
+    struct cJSON* root = NULL;
+
+
+    root = cJSON_Parse(json_txt);
+    if (NULL == root) {
+        fprintf(stderr, "parse l1_mainfest document failed");
+        rc = JCFG_ERR_BAD_DOCUMENT;
+        goto DONE;
+    }
+    rc = bs_parse_l1_manifest(root, l1_mani);
+    if (JCFG_ERR_OK == rc) {
+        fprintf(stdout,
+            "--- parse l1_manifest success----\n"
+            "---------------------------------\n");
+    }
+
+DONE:
+    if (root)
+        cJSON_Delete(root);
+
+    return (rc);
+}
+
+int bs_save_l1_manifest(const char* file_name, bs_l1_manifest_t* l1_mani)
+{
+    assert(file_name);
+    assert(l1_mani);
+
+    FILE* fp = NULL;
+    char* cfg = NULL;
+    int rc = JCFG_ERR_OK;
+
+    fp = fopen(file_name, "wt");
+    if (!fp)    {
+        fprintf(stderr, 
+            "Could not open l1_manifest file '%s' to write\n", file_name);
+        rc = JCFG_ERR_L1_MANI_FILE_OPEN_WRITE_FAIL;
+        goto DONE;
+    }
+
+    cfg = malloc(BS_CFG_MAX_MANI_TXT_LEN);
+    if (cfg == NULL) {
+        fprintf(stderr, "ERR:SAVE_L1_MANI:failed to alloc mem.\n");
+        rc = JCFG_ERR_ALLOC_MEM_FAIL;
+        goto DONE;
+    }
+
+    size_t spac_len = BS_CFG_MAX_MANI_TXT_LEN - 1;
+    memset(cfg, 0, BS_CFG_MAX_MANI_TXT_LEN);
+
+    char* w_ptr = cfg;
+    W_JCHR('{');
+    {
+        W_JINT("status", l1_mani->status); W_JCHR(',');
+        W_JSTR_AS_OBJ("mani_txt", l1_mani->mani_txt);
+    }
+    W_JCHR('}');
+
+    size_t w_len = fwrite(cfg, 1, strlen(cfg), fp);
+    if (w_len != strlen(cfg)) {
+        fprintf(stderr, "ERR:SAVE_L1_MANI:write to file error:%d.\n", errno);
+        rc = JCFG_ERR_SYSTEM_CALL_FAIL;
+        goto DONE;
+    }
+
+DONE:
+    if (fp)
+        fclose(fp);
+    if (cfg)
+        free(cfg);
+
+    return (rc);
+}
+
+int bs_load_l1_manifest(const char* file_name, bs_l1_manifest_t* l1_mani)
+{
+    assert(file_name);
+    assert(l1_mani);
+
+    FILE* fp = NULL;
+    char* cfg = NULL;
+
+    struct cJSON* root = NULL;
+    int rc = JCFG_ERR_OK;
+
+    cfg = malloc(BS_CFG_MAX_MANI_TXT_LEN + 1);
+    if (cfg == NULL) {
+        fprintf(stderr, "ERR::LOAD_L1_MANI:failed to alloc mem.\n");
+        rc = JCFG_ERR_ALLOC_MEM_FAIL;
+        goto DONE;
+    }
+
+    fp = on_read(file_name);
+    if (!fp) {
+        rc = JCFG_ERR_L1_MANI_FILE_OPEN_READ_FAIL;
+        goto DONE;
+    }
+
+    rc = fread(cfg, 1, BS_CFG_MAX_MANI_TXT_LEN, fp);
+    if (!rc) {
+        fprintf(stderr, "ERR:LOAD_L1_MANI:failed to read(%d).\n", errno);
+        rc = JCFG_ERR_SYSTEM_CALL_FAIL;
+        goto DONE;
+    }
+    if (rc >= BS_CFG_MAX_MANI_TXT_LEN) {
+        fprintf(stderr, "ERR:LOAD_L1_MANI:config txt to large.\n");
+        rc = JCFG_ERR_BAD_DOCUMENT;
+        goto DONE;
+    }
+    cfg[rc] = '\0';
+
+    root = cJSON_Parse(cfg);
+    if (NULL == root) {
+        fprintf(stderr, "ERR:LOAD_L1_MANI:parse l1_mainfest document failed");
+        rc = JCFG_ERR_BAD_DOCUMENT;
+        goto DONE;
+    }
+
+    struct cJSON* status = cJSON_GetObjectItem(root, "status");
+    if (!cJSON_IsNumber(status)) {
+        fprintf(stderr,
+            "[/status] number element not find");
+        rc = JCFG_ERR_BAD_DOCUMENT;
+        goto DONE;
+    }
+
+    struct cJSON* mani_txt = cJSON_GetObjectItem(root, "mani_txt");
+    if (!cJSON_IsObject(mani_txt)) {
+        fprintf(stderr,
+            "[/mani_txt] object element not find");
+        rc = JCFG_ERR_BAD_DOCUMENT;
+        goto DONE;
+    }
+    rc = bs_parse_l1_manifest(mani_txt, l1_mani);
+    if (JCFG_ERR_OK != rc) {
+        goto DONE;
+    }
+    l1_mani->status = status->valueint;
+    //
+    cJSON_PrintPreallocated(mani_txt, l1_mani->mani_txt, BS_CFG_MAX_MANI_TXT_LEN, false);
+
+DONE:
+    if (fp)
+        fclose(fp);
+    if (cfg)
+        free(cfg);
+    if (root)
+        cJSON_Delete(root);
+
+    return (rc);
+}
