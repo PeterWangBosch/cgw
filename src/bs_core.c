@@ -1,6 +1,7 @@
 #include "bs_core.h"
 
 #include "src/bs_cgw_utils.h"
+#include "src/bs_dlc_apis.h"
 #include "bs_eth_installer_job.h"
 #include "bs_tdr_job.h"
 #include "file_utils.h"
@@ -178,7 +179,7 @@ void bs_core_init_ctx(const char * conf_file)
   (void) conf_file;
 
  // char *filename="/vendor/etc/config.ini";
-  char *filename="/data/etc/orchestrator/config.ini";
+  //char *filename="/data/etc/orchestrator/config.ini";
   g_ctx.tlc = NULL;
   memset(g_ctx.tlc_ip, 0, 32);
   strcpy(g_ctx.tlc_ip, "127.0.0.1");
@@ -222,7 +223,7 @@ void bs_core_init_ctx(const char * conf_file)
   g_ctx.apps[2].pkg_stat.stat = bs_pkg_stat_idle;
   strcpy(g_ctx.apps[2].pkg_stat.name, "/data/var/orchestrator/wpc.1.0.0");
 
-  bs_save_app_config(filename, g_ctx.apps, BS_MAX_DEVICE_APP_NUM);
+  //bs_save_app_config(filename, g_ctx.apps, BS_MAX_DEVICE_APP_NUM);
 }
 
 void bs_core_exit_ctx()
@@ -382,6 +383,7 @@ struct bs_device_app * bs_core_eth_installer_down(struct mg_connection * nc)
   char ip[32];
   int i;
 
+  dlc_report_status_finish_fail();
   for (i=0; i<BS_MAX_DEVICE_APP_NUM; i++) {
     // invalid device
     if (g_ctx.apps[i].dev_id[0] == 0) {

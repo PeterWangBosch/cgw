@@ -1,4 +1,5 @@
 #include "bs_core.h"
+#include "bs_dlc_apis.h"
 #include "bs_tdr_job.h"
 
 void * bs_tdr_job_thread(void *param) {
@@ -19,6 +20,7 @@ void * bs_tdr_job_thread(void *param) {
 
   if ((fp = popen(cmd, "r")) == NULL) {
     core_req.payload.stat.progress_percent = 0;
+    dlc_report_status_finish_wpc_fail();
     if (write(bs_get_core_ctx()->core_msg_sock[0], &core_req, sizeof(core_req)) < 0) {
       printf("Writing core sock error!\n");
     }
@@ -45,6 +47,7 @@ void * bs_tdr_job_thread(void *param) {
   //------------------------------
   if ((fp = popen("sh /tdr/usr/bin/aaas_runtask.sh RDA /data/data/ExecuteRdaJob.ea8b7e7f-349b-4790-8f81-fa5dfd1c6fed.v1.zip", "r")) == NULL) {
     printf("Run ExecuteRdaJob error!\n");
+    dlc_report_status_finish_wpc_fail();
     return NULL;
   }
 
@@ -57,6 +60,10 @@ void * bs_tdr_job_thread(void *param) {
   if (write(bs_get_core_ctx()->core_msg_sock[0], &core_req, sizeof(core_req)) < 0) {
     printf("Writing core sock error!\n");
   }
+
+  sleep(40);
+  dlc_report_status_finish_wpc();
+
   printf("CGW Orchstrator: tdr run success!\n");
   pclose(fp);
   return NULL;
