@@ -398,8 +398,8 @@ int bs_store_and_parse_l1_manifest(const char* json_txt, bs_l1_manifest_t* l1_ma
     assert(l1_mani);
 
     fprintf(stdout, "--- parse l1_manifest enter -----\n");
-    fprintf(stdout, "%s", json_txt);
-    fprintf(stdout, "---------------------------------\n");
+    //fprintf(stdout, "%s", json_txt);
+    //fprintf(stdout, "---------------------------------\n");
 
     int rc = JCFG_ERR_OK;
     memset(l1_mani, 0, sizeof(bs_l1_manifest_t));

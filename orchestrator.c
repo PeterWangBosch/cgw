@@ -11,6 +11,7 @@
 #include "src/file_utils.h"
 #include "src/bs_dlc_apis.h"
 #include "src/bs_eth_installer_job.h"
+#include "src/bs_cgw_utils.h"
 
 //-----------------------------------------------------------------------
 // Protocol JSON parser
@@ -78,6 +79,48 @@ static void handle_test_vers(struct mg_connection *nc, int ev, void *p) {
   mg_printf(nc, "%s", "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n");
   mg_printf_http_chunk(nc, "{ \"result\": \"%s\" }", bs_get_vers());
   mg_send_http_chunk(nc, "", 0); /* Send empty chunk, the end of response */
+}
+
+
+static void handle_l1_mani_new(struct mg_connection* nc, int ev, void* p) {
+
+    struct http_message* hm = (struct http_message*)p;
+    const char* result = api_resp_err_succ;
+    (void)ev;
+
+    const char* l1_mani_file_path = "/data/etc/orchestrator/cgw_l1_manifest.json";
+    int rc = JCFG_ERR_OK;
+    //struct bs_core_request core_req;
+
+    if (!hm || !hm->body.p)
+        return;
+
+    printf("/l1_mani/new :raw msg from DLC: %s\n", hm->body.p);
+    bs_l1_manifest_t l1_mani = { 0 };
+    
+    rc = bs_store_and_parse_l1_manifest(hm->body.p, &l1_mani);
+    if (JCFG_ERR_OK == rc) {
+        printf("/l1_mani/new :recv l1_mani form DLC\n");
+        l1_mani.status = BS_DEV_TYPE_IDLE;
+        rc = bs_save_l1_manifest(l1_mani_file_path, &l1_mani);
+        if (JCFG_ERR_OK == rc) {
+            printf("/l1_mani/new :save l1_mani success\n");
+        }
+        else {
+            printf("/l1_mani/new :save l1_mani failed\n");
+        }
+    }
+    else {
+        printf("/l1_mani/new :parse l1_mani failed\n");
+    }    
+
+    if (JCFG_ERR_OK != rc) {
+        result = api_resp_err_fail;
+    }
+
+    mg_printf(nc, "%s", "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n");
+    mg_printf_http_chunk(nc, "{ \"result\": \"%s\" }", result);
+    mg_send_http_chunk(nc, "", 0); /* Send empty chunk, the end of response */
 }
 
 static void handle_pkg_new(struct mg_connection *nc, int ev, void *p) {
@@ -462,6 +505,7 @@ int main(int argc, char *argv[]) {
 //  nc->user_data = (void *) bs_get_next_conn_id();
 
   // Register endpoints
+  mg_register_http_endpoint(nc, "/l1_mani/new", handle_l1_mani_new MG_UD_ARG(NULL));
   mg_register_http_endpoint(nc, "/upload", handle_upload MG_UD_ARG(NULL));
   mg_register_http_endpoint(nc, "/test/live", handle_test_live MG_UD_ARG(NULL));
   mg_register_http_endpoint(nc, "/test/vers", handle_test_vers MG_UD_ARG(NULL));
