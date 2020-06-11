@@ -10,7 +10,7 @@ extern "C" {
 
 //
 #define BS_CFG_MAX_APP_TXT_LEN 2048
-#define BS_CFG_MAX_MANI_TXT_LEN 4096
+#define BS_CFG_MAX_MANI_TXT_LEN 8012
 typedef struct bs_device_app bs_device_app_t;
 
 
