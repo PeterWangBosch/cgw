@@ -3,6 +3,7 @@
 
 #include <stdio.h>
 #include "mongoose/mongoose.h"
+#include "bs_cgw_utils.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -60,6 +61,8 @@ struct bs_device_app {
   struct bs_app_intaller_job job;
 };
 
+
+
 #define BS_MAX_DEVICE_APP_NUM 128
 struct bs_context {
   unsigned long next_conn_id; 
@@ -75,6 +78,7 @@ struct bs_context {
 union bs_core_request_data {
   struct bs_app_upgrade_stat stat;
   char info[128];
+  bs_l1_manifest_t* l1_mani;
 };
 #define BS_CORE_REQ_INVALID 0
 #define BS_CORE_REQ_PKG_NEW 1
@@ -85,6 +89,8 @@ union bs_core_request_data {
 
 #define BS_CORE_REQ_ETHECU_VER 6
 #define BS_CORE_REQ_REC_ERR 7
+#define BS_CORE_REQ_PKG_FAIL 21
+
 
 struct bs_core_request {
   unsigned long conn_id;

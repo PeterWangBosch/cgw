@@ -1,6 +1,7 @@
 #include <assert.h>
 #include <stdio.h>
 
+#include "bs_core.h"
 #include "bs_cgw_utils.h"
 #include "file_utils.h"
 #include "cJSON/cJSON.h"
@@ -56,7 +57,7 @@
     } while (0)
 
 
-int bs_load_app_config(const char* file_name, bs_device_app_t apps[], int max_app)
+int bs_load_app_config(const char* file_name, bs_device_app_t* apps, int max_app)
 {
     FILE* fp = NULL;
     char* cfg = NULL;
@@ -111,7 +112,7 @@ int bs_load_app_config(const char* file_name, bs_device_app_t apps[], int max_ap
         j_app != NULL && app_i < max_app;
         app_i++, j_app = j_app->next) {
 
-        struct bs_device_app* app = &apps[app_i];
+        bs_device_app_t* app = &apps[app_i];
         bs_init_device_app(app);
 
         if (!cJSON_IsObject(j_app)) {
@@ -198,7 +199,7 @@ DONE:
     return (rc);
 }
 
-int bs_save_app_config(const char* filename, bs_device_app_t apps[], int max_app)
+int bs_save_app_config(const char* filename, bs_device_app_t* apps, int max_app)
 {
     FILE* fp = NULL;
     char* cfg = NULL;
@@ -227,7 +228,7 @@ int bs_save_app_config(const char* filename, bs_device_app_t apps[], int max_app
     int app_n = 0;
     {
         for (int i = 0; i < max_app; ++i) {
-            struct bs_device_app* app = &apps[i];
+            bs_device_app_t* app = &apps[i];
             if (app->dev_id[0] == 0 && app->soft_id[0] == 0)
                 continue;
 

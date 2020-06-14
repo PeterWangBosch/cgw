@@ -4,6 +4,10 @@
  */
 
 #include "stdio.h"
+#include <sys/select.h>
+#include <sys/time.h>
+#include <sys/types.h>
+#include <unistd.h>
 
 #include "cJSON/cJSON.h"
 #include "mongoose/mongoose.h"
@@ -32,6 +36,7 @@ typedef int (* cJSONHookFn) (const cJSON *);
 //------------------------------------------------------------------
 static const char *s_http_port = "8018";
 static struct mg_serve_http_opts s_http_server_opts;
+static bs_l1_manifest_t g_l1_mani = { 0 };
 
 //------------------------------------------------------------------
 // Handle core data
@@ -81,8 +86,7 @@ static void handle_test_vers(struct mg_connection *nc, int ev, void *p) {
   mg_send_http_chunk(nc, "", 0); /* Send empty chunk, the end of response */
 }
 
-
-static void handle_l1_mani_new(struct mg_connection* nc, int ev, void* p) {
+static void handle_pkg_new(struct mg_connection* nc, int ev, void* p) {
 
     struct http_message* hm = (struct http_message*)p;
     const char* result = api_resp_err_succ;
@@ -90,146 +94,65 @@ static void handle_l1_mani_new(struct mg_connection* nc, int ev, void* p) {
 
     const char* l1_mani_file_path = "/data/etc/orchestrator/cgw_l1_manifest.json";
     int rc = JCFG_ERR_OK;
-    //struct bs_core_request core_req;
 
-    if (!hm || !hm->body.p)
+    // update dlc ip addr record
+    bs_get_core_ctx()->tlc = nc;
+    memset(bs_get_core_ctx()->tlc_ip, 0, 32);
+    if (mg_sock_addr_to_str(&(nc->sa), bs_get_core_ctx()->tlc_ip, 32, MG_SOCK_STRINGIFY_IP) <= 0) {
+        strcpy(bs_get_core_ctx()->tlc_ip, "127.0.0.1");
         return;
+    }
 
-    printf("/l1_mani/new :raw msg from DLC: %s\n", hm->body.p);
+
+    if (!hm || !hm->body.p) {
+        return;
+    }
+
+    printf("/pkg/new :raw msg from DLC: %s\n", hm->body.p);
     bs_l1_manifest_t l1_mani = { 0 };
-    
+
     rc = bs_store_and_parse_l1_manifest(hm->body.p, &l1_mani);
     if (JCFG_ERR_OK == rc) {
-        printf("/l1_mani/new :recv l1_mani form DLC\n");
+        printf("/pkg/new :recv l1_mani form DLC\n");
         l1_mani.status = BS_DEV_TYPE_IDLE;
+        memcpy(&g_l1_mani, &l1_mani, sizeof(g_l1_mani));
+
         rc = bs_save_l1_manifest(l1_mani_file_path, &l1_mani);
         if (JCFG_ERR_OK == rc) {
-            printf("/l1_mani/new :save l1_mani success\n");
+            printf("/pkg/new :save l1_mani success\n");
         }
         else {
-            printf("/l1_mani/new :save l1_mani failed\n");
+            printf("/pkg/new :save l1_mani failed\n");
         }
     }
     else {
-        printf("/l1_mani/new :parse l1_mani failed\n");
-    }    
+        printf("/pkg/new :parse l1_mani failed\n");
+    }
 
     if (JCFG_ERR_OK != rc) {
         result = api_resp_err_fail;
     }
 
+    //req backgroud thread to down pkg if nessesary
+    if (JCFG_ERR_OK == rc) {
+        struct bs_core_request core_req;
+
+        bs_init_core_request(&core_req);
+        core_req.cmd = BS_CORE_REQ_PKG_NEW;
+        core_req.payload.l1_mani = &g_l1_mani;
+
+        printf("Core request PKG_NEW\n");
+        if (write(bs_get_core_ctx()->core_msg_sock[0], &core_req, sizeof(core_req)) < 0) {
+            printf("Writing core sock error!\n");
+            result = api_resp_err_fail;
+        }
+    }
+
+    //send resp to dlc
     mg_printf(nc, "%s", "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n");
     mg_printf_http_chunk(nc, "{ \"result\": \"%s\" }", result);
     mg_send_http_chunk(nc, "", 0); /* Send empty chunk, the end of response */
-}
 
-static void handle_pkg_new(struct mg_connection *nc, int ev, void *p) {
-  struct http_message *hm = (struct http_message *) p;
-  const char *result = api_resp_err_succ;
-  (void) ev;
-
-  int parse_stat = JSON_INIT;
-  struct cJSON * root = NULL;
-  struct cJSON * iterator = NULL;
-  struct cJSON * payload = NULL;
-  char * dev_id = NULL;
-
-  struct bs_core_request core_req;
-
-  if (!hm || !hm->body.p)
-    return;
-
-  printf("/pkg/new raw msg from TLC: %s\n", hm->body.p);
-
-  root = cJSON_Parse(hm->body.p);
-  //TODO: check code of cJSON if memory leave when root is NULL
-  if (root == NULL) {
-    result = api_resp_err_fail;
-    goto last_step; 
-  }
-
-  iterator = root->child;
-  while(iterator) {
-    if (strcmp(iterator->string, "dev_id") == 0) {
-      parse_stat = JSON_HAS_DEVID;
-      dev_id = iterator->valuestring;
-      break;
-    }
-    iterator = iterator->next;
-  }
-  if (parse_stat != JSON_HAS_DEVID) {
-    result = api_resp_err_devid;
-    goto last_step;
-  } 
-
-  struct bs_device_app * app = bs_core_find_app(dev_id);
-  if (!app) {
-    result = api_resp_err_devid;
-    goto last_step;
-  }
-
-  payload = cJSON_GetObjectItem(root, "payload");
-  if (!payload) {
-    result = api_resp_err_payload;
-    goto last_step; 
-  }
-
-  // find url
-  iterator = payload->child;
-  while(iterator) {
-    if (strcmp(iterator->string, "url") == 0) {
-      break;
-    }
-    iterator = iterator->next;
-  }
-
-  if (!iterator) {
-    result = api_resp_err_payload;
-    goto last_step;
-  }
-
-  // update ip addr record
-  memset(bs_get_core_ctx()->tlc_ip, 0, 32);
-  if (mg_sock_addr_to_str(&(nc->sa),
-                          bs_get_core_ctx()->tlc_ip, 32,
-                          MG_SOCK_STRINGIFY_IP) <= 0) {
-    memset(bs_get_core_ctx()->tlc_ip, 0, 32);
-    strcpy(bs_get_core_ctx()->tlc_ip, "127.0.0.1");
-    return;
-  }
-
-  // forward to core
-  bs_init_core_request(&core_req);
-  strcpy(core_req.dev_id, dev_id);
-  core_req.cmd = BS_CORE_REQ_PKG_NEW;
-
-  //TODO: change hard code
-  if (strcmp(dev_id, "WPC") != 0) {
-    // synthesize ftp downloading link
-    strcpy(core_req.payload.info, "ftp://");
-    strcat(core_req.payload.info, bs_get_core_ctx()->tlc_ip);
-    strcat(core_req.payload.info, "/");
-    strcat(core_req.payload.info, iterator->valuestring);
-  }
-
-
-  printf("Core request PKG_NEW: dev_id: %s tlc_ip: %s\n", dev_id, bs_get_core_ctx()->tlc_ip);
-  if (write(bs_get_core_ctx()->core_msg_sock[0], &core_req, sizeof(core_req)) < 0) {
-    printf("Writing core sock error!\n");
-    result = api_resp_err_fail;
-    goto last_step; 
-  }
-
-last_step:
-  mg_printf(nc, "%s", "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n");
-  if (app && app->pkg_stat.type == BS_PKG_TYPE_ETH_ECU) {
-    mg_printf_http_chunk(nc, "{ \"result\": \"%s\", \"upload\": \"yes\" }", result);
-  } else {
-    mg_printf_http_chunk(nc, "{ \"result\": \"%s\", \"upload\": \"no\" }", result);
-  }
-  mg_send_http_chunk(nc, "", 0); /* Send empty chunk, the end of response */
-  // release memory
-  cJSON_Delete(root);
 }
 
 
@@ -433,10 +356,52 @@ static void handle_upload(struct mg_connection *nc, int ev, void *p) {
   }
 }
 
-static void ev_handler(struct mg_connection *nc, int ev, void *ev_data) {
-  if (ev == MG_EV_HTTP_REQUEST) {
-    mg_serve_http(nc, ev_data, s_http_server_opts);
-  }
+static void dlc_handle_background_msg()
+{
+    sock_t fd = bs_get_core_ctx()->core_msg_sock[0];
+    struct timeval tv = { 0 };
+
+    fd_set rd;
+    FD_ZERO(&rd);
+    FD_SET(fd, &rd);
+
+    int rc = select(fd + 1, &rd, NULL, NULL, &tv);
+    //= 0 : timeout
+    //< 0 : fail
+    //> 0 : event num
+    if (rc <= 0)
+        return;
+
+    struct bs_core_request req = { 0 };
+    if (read(fd, &req, sizeof(req)) < 0) {
+        perror("Error reading worker notify sock");
+        return;
+    }
+
+    switch (req.cmd) {
+    case BS_CORE_REQ_PKG_READY:
+        fprintf(stdout, "Recv background cmd: BS_CORE_REQ_PKG_READY\n");
+        break;
+    case BS_CORE_REQ_PKG_FAIL:
+        fprintf(stdout, "Recv background cmd: BS_CORE_REQ_PKG_FAIL\n");
+        break;
+    default:
+        fprintf(stdout, "Recv background cmd: UNKOWN=%d\n", req.cmd);
+        break;
+    }
+}
+
+static void dlc_msg_handler(struct mg_connection *nc, int ev, void *ev_data) {
+
+    switch (ev) {
+    case MG_EV_HTTP_REQUEST:
+        mg_serve_http(nc, ev_data, s_http_server_opts);
+        break;
+    case MG_EV_POLL:
+        //proc background thread notify
+        dlc_handle_background_msg();
+        break;
+    }
 }
 
 //------------------------------------------------------------------
@@ -495,18 +460,19 @@ int main(int argc, char *argv[]) {
     bind_opts.ssl_cert = ssl_cert;
   }
 #endif
-  nc = mg_bind_opt(&mgr, s_http_port, ev_handler, bind_opts);
+  nc = mg_bind_opt(&mgr, s_http_port, dlc_msg_handler, bind_opts);
   if (nc == NULL) {
-    fprintf(stderr, "Error starting server on port %s: %s\n", s_http_port,
+    fprintf(stderr, "Starting server on port %s for DLC fail(%s)\n", s_http_port,
             *bind_opts.error_string);
     exit(1);
-  }
+  } 
+  else {
+      fprintf(stdout, "Starting server on port %s for DLC\n", s_http_port);
+  }  
 
-//  nc->user_data = (void *) bs_get_next_conn_id();
 
   // Register endpoints
-  mg_register_http_endpoint(nc, "/l1_mani/new", handle_l1_mani_new MG_UD_ARG(NULL));
-  mg_register_http_endpoint(nc, "/upload", handle_upload MG_UD_ARG(NULL));
+  //mg_register_http_endpoint(nc, "/upload", handle_upload MG_UD_ARG(NULL));
   mg_register_http_endpoint(nc, "/test/live", handle_test_live MG_UD_ARG(NULL));
   mg_register_http_endpoint(nc, "/test/vers", handle_test_vers MG_UD_ARG(NULL));
   mg_register_http_endpoint(nc, "/pkg/new", handle_pkg_new MG_UD_ARG(NULL));

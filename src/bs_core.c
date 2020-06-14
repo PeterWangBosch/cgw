@@ -508,41 +508,148 @@ int bs_core_req_pkg_ready(struct bs_core_request* req)
   return 1;
 }
 
+static const char *pick_file_name(const char *file_path) {
+  int siz = (int)strlen(file_path);
+  for (int i = siz - 1; i >= 0; --i) {
+    if (file_path[i] == '/') {
+      return (&file_path[i + 1]);
+    }
+  }
+
+  return (file_path);
+}
+
+int bs_core_down_can_pkg(bs_l1_manifest_pkg_t* pkg)
+{
+    assert(pkg);
+    int rc = 0;
+    FILE* fp = NULL;
+    char cmd_buf[1024] = { 0 };
+    char cmd_out[1024] = { 0 };
+    char ftp_url[512] = { 0 };
+
+    const char* pkg_name = pick_file_name(pkg->pkg_url);
+
+    snprintf(ftp_url, sizeof(ftp_url) - 1, "ftp://%s/%s", bs_get_core_ctx()->tlc_ip, pkg_name);
+    snprintf(cmd_buf, sizeof(cmd_buf) - 1, "curl -o /share/%s  %s", pkg_name, ftp_url);
+    fwrite(cmd_buf, 1, strlen(cmd_buf), stdout);
+
+    if ((fp = popen(cmd_buf, "r")) == NULL) {
+        fprintf(
+            stderr,
+            "ERROR,bs_core_down_can_pkg,popen failed(%d)\n", 
+            errno);
+
+        rc = -1;;
+        goto DONE;
+    }
+    while (fgets(cmd_out, sizeof(cmd_out), fp) != NULL) {
+        fwrite(cmd_out, 1, strlen(cmd_out), stdout);
+        //TODO:check curl work result
+    }
+    fprintf(stdout, "\n\n");
+
+
+DONE:
+    if (fp)
+        pclose(fp);
+
+    return (rc);
+}
+
 int bs_core_req_pkg_new(struct bs_core_request* req)
 {
-  struct bs_eth_installer_core_request inst_req;
-  struct bs_device_app *app = bs_core_find_app(req->dev_id);
-  if (app == NULL) {
-    return 0;
-  }
+    int rc = 0;
+    assert(req);
 
-  switch(app->pkg_stat.type) {
-    case BS_PKG_TYPE_CAN_ECU:
-    case BS_PKG_TYPE_ORCH:
-      // local download & cache
-      printf("core recv: pkg new CAN ECU\n");
-      app->pkg_stat.stat = bs_pkg_stat_loading;
-      bs_get_core_ctx()->loading_app = app;
-      break;
-    case BS_PKG_TYPE_ETH_ECU:
-      printf("core recv: pkg new ETH ECU\n");
-      //TODO: start remote installer job
-      bs_init_eth_installer_core_request(&inst_req, app);
-      inst_req.cmd = BS_ETH_INSTALLER_VERS;
-      inst_req.app = app;
-      strcpy(inst_req.payload.info, req->payload.info);
-      if (write(bs_get_core_ctx()->eth_installer_msg_sock[0], &inst_req, sizeof(inst_req)) < 0) {
-        printf("Writing eth instl sock error!\n");
-        return 0;
-      }
+    ////down pkg for dev_type == can||can-fd
+    bs_l1_manifest_t* l1_mani = req->payload.l1_mani;
+    for (int i = 0; i < l1_mani->pkg_num; ++i) {
+        bs_l1_manifest_pkg_t* pkg = &l1_mani->packages[i];
+        if (pkg->dev_type == BS_DEV_TYPE_CAN ||
+            pkg->dev_type == BS_DEV_TYPE_CAN_FD)
+        {
+            rc = bs_core_down_can_pkg(pkg);
+            if (rc) {
+                fprintf(stderr,
+                    "ERROR,bs_core_req_pkg_new,down pkg fail(%d:%s:%s)\n",
+                    pkg->dev_type, pkg->dev_id, pkg->pkg_url);
 
-      break;
-    case BS_PKG_TYPE_INVALID:
-    default:
-      return 0;
-  }
+                goto DONE;
+            }
+            else {
+                fprintf(stdout, "INFO,bs_core_req_pkg_new,down pkg succ(%d:%s:%s)\n",
+                    pkg->dev_type, pkg->dev_id, pkg->pkg_url);
+            }
+        }//down can/can-fd pkg      
+    }
 
-  return 1;
+DONE:
+    if (rc) {
+        struct bs_core_request core_req;
+
+        bs_init_core_request(&core_req);
+        core_req.cmd = BS_CORE_REQ_PKG_FAIL;
+
+        fprintf(stdout, "Core request BS_CORE_SVC_DOWN_FAIL\n");
+
+        //from core_stat_thread to main_thread
+        if (write(g_ctx.core_msg_sock[1], &core_req,
+            sizeof(core_req)) < 0) {
+            fprintf(stderr, "Writing core sock error!\n");
+        }
+    }
+    else {
+        struct bs_core_request core_req;
+
+        bs_init_core_request(&core_req);
+        core_req.cmd = BS_CORE_REQ_PKG_READY;
+
+        fprintf(stdout, "Core request BS_CORE_REQ_PKG_READY\n");
+
+        //from core_stat_thread to main_thread
+        if (write(g_ctx.core_msg_sock[1], &core_req,
+            sizeof(core_req)) < 0) {
+            fprintf(stderr, "Writing core sock error!\n");
+        }
+    }
+
+    return (rc);
+
+
+  //struct bs_eth_installer_core_request inst_req;
+  //struct bs_device_app *app = bs_core_find_app(req->dev_id);
+  //if (app == NULL) {
+  //  return 0;
+  //}
+
+  //switch(app->pkg_stat.type) {
+  //  case BS_PKG_TYPE_CAN_ECU:
+  //  case BS_PKG_TYPE_ORCH:
+  //    // local download & cache
+  //    printf("core recv: pkg new CAN ECU\n");
+  //    app->pkg_stat.stat = bs_pkg_stat_loading;
+  //    bs_get_core_ctx()->loading_app = app;
+  //    break;
+  //  case BS_PKG_TYPE_ETH_ECU:
+  //    printf("core recv: pkg new ETH ECU\n");
+  //    //TODO: start remote installer job
+  //    bs_init_eth_installer_core_request(&inst_req, app);
+  //    inst_req.cmd = BS_ETH_INSTALLER_VERS;
+  //    inst_req.app = app;
+  //    strcpy(inst_req.payload.info, req->payload.info);
+  //    if (write(bs_get_core_ctx()->eth_installer_msg_sock[0], &inst_req, sizeof(inst_req)) < 0) {
+  //      printf("Writing eth instl sock error!\n");
+  //      return 0;
+  //    }
+
+  //    break;
+  //  case BS_PKG_TYPE_INVALID:
+  //  default:
+  //    return 0;
+  //}
+
+  //return 1;
 }
 
 
@@ -573,7 +680,7 @@ void *bs_core_thread(void *param)
         break;
       case BS_CORE_REQ_PKG_READY:
         bs_core_req_pkg_ready(&req);
-        bs_core_req_tdr_run(&req);//TODO: remove it when HMI is ready
+        //bs_core_req_tdr_run(&req);//TODO: remove it when HMI is ready
         break;
       case BS_CORE_REQ_TDR_RUN:
         bs_core_req_tdr_run(&req);
@@ -583,6 +690,7 @@ void *bs_core_thread(void *param)
         break;
       case BS_CORE_REQ_INVALID:
       default:
+        fprintf(stderr, "ERROR,bs_core_thread,unkown cmd:%d", req.cmd);
         break;
     }
   }

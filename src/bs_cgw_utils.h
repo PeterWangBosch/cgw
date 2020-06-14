@@ -1,9 +1,6 @@
 #ifndef BS_JSON_UTILS_H_
 #define BS_JSON_UTILS_H_
 
-#include "bs_core.h"
-
-
 #ifdef __cplusplus
 extern "C" {
 #endif /* __cplusplus */
@@ -68,8 +65,8 @@ typedef struct bs_l1_manifest_s {
 //
 
 
-int bs_load_app_config(const char* file_name, bs_device_app_t apps[], int max_app);
-int bs_save_app_config(const char* file_name, bs_device_app_t apps[], int max_app);
+int bs_load_app_config(const char* file_name, bs_device_app_t* apps, int max_app);
+int bs_save_app_config(const char* file_name, bs_device_app_t* apps, int max_app);
 
 //parse l1_manifest json document to bs_l1_manifest_t::packages & pkg_num
 //and store orig json document to bs_l1_manifest_t::mani_txt
