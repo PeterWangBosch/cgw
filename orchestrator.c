@@ -380,13 +380,13 @@ static void dlc_handle_background_msg()
 
     switch (req.cmd) {
     case BS_CORE_REQ_PKG_READY:
-        fprintf(stdout, "Recv background cmd: BS_CORE_REQ_PKG_READY\n");
+        fprintf(stdout, "Main_Thrd:Recv background cmd: BS_CORE_REQ_PKG_READY\n");
         break;
     case BS_CORE_REQ_PKG_FAIL:
-        fprintf(stdout, "Recv background cmd: BS_CORE_REQ_PKG_FAIL\n");
+        fprintf(stdout, "Main_Thrd:Recv background cmd: BS_CORE_REQ_PKG_FAIL\n");
         break;
     default:
-        fprintf(stdout, "Recv background cmd: UNKOWN=%d\n", req.cmd);
+        fprintf(stdout, "Main_Thrd:Recv background cmd: UNKOWN=%d\n", req.cmd);
         break;
     }
 }

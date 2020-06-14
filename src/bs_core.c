@@ -672,7 +672,7 @@ void *bs_core_thread(void *param)
       continue;
     }
 
-    printf("Received signal : %d\n", req.cmd);    
+    printf("Core_Thrd:rcv cmd :%d\n", req.cmd);    
 
     switch (req.cmd) {
       case BS_CORE_REQ_PKG_NEW:
