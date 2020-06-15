@@ -223,6 +223,8 @@ void bs_core_init_ctx(const char * conf_file)
   strcpy(g_ctx.apps[2].pkg_stat.name, "/data/var/orchestrator/wpc.1.0.0");
 
   bs_save_app_config(filename, g_ctx.apps, BS_MAX_DEVICE_APP_NUM);
+
+  g_ctx.cgw_stat = CGW_STAT_IDLE;
 }
 
 void bs_core_exit_ctx()
@@ -292,6 +294,28 @@ unsigned int bs_print_json_upgrade_stat(struct bs_device_app *app, char* msg)
   printf("/tdr/stat: %s\n", msg);
 
   return pc;  
+}
+
+int bs_cgw_get_stat()
+{
+    return (__sync_fetch_and_or(&g_ctx.cgw_stat, 0));
+}
+
+ 
+int bs_cgw_set_stat(int new_stat)
+{    
+    int prev_stat;
+
+    while (true) {
+        prev_stat = bs_cgw_get_stat();
+        if (prev_stat == new_stat)
+            break;
+
+        if (__sync_bool_compare_and_swap(&g_ctx.cgw_stat, prev_stat, new_stat))
+            break;
+    }
+
+    return (prev_stat);
 }
 
 struct bs_device_app * bs_core_find_app(const char *id)
@@ -586,13 +610,13 @@ int bs_core_req_pkg_new(struct bs_core_request* req)
 
 DONE:
     if (rc) {
-        struct bs_core_request core_req;
-
-        bs_init_core_request(&core_req);
-        core_req.cmd = BS_CORE_REQ_PKG_FAIL;
 
         fprintf(stdout, "Core request BS_CORE_SVC_DOWN_FAIL\n");
-
+        bs_cgw_set_stat(CGW_STAT_PKG_FAIL);
+        //        
+        struct bs_core_request core_req;
+        bs_init_core_request(&core_req);
+        core_req.cmd = BS_CORE_REQ_PKG_FAIL;
         //from core_stat_thread to main_thread
         if (write(g_ctx.core_msg_sock[1], &core_req,
             sizeof(core_req)) < 0) {
@@ -600,13 +624,12 @@ DONE:
         }
     }
     else {
+        fprintf(stdout, "Core request BS_CORE_REQ_PKG_READY\n");
+        bs_cgw_set_stat(CGW_STAT_PKG_READY);
+        //
         struct bs_core_request core_req;
-
         bs_init_core_request(&core_req);
         core_req.cmd = BS_CORE_REQ_PKG_READY;
-
-        fprintf(stdout, "Core request BS_CORE_REQ_PKG_READY\n");
-
         //from core_stat_thread to main_thread
         if (write(g_ctx.core_msg_sock[1], &core_req,
             sizeof(core_req)) < 0) {
@@ -676,9 +699,11 @@ void *bs_core_thread(void *param)
 
     switch (req.cmd) {
       case BS_CORE_REQ_PKG_NEW:
+        bs_cgw_set_stat(CGW_STAT_PKG_DOWNING);
         bs_core_req_pkg_new(&req);
         break;
       case BS_CORE_REQ_PKG_READY:
+        bs_cgw_set_stat(CGW_STAT_PKG_READY);
         bs_core_req_pkg_ready(&req);
         //bs_core_req_tdr_run(&req);//TODO: remove it when HMI is ready
         break;

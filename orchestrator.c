@@ -160,9 +160,29 @@ static void handle_pkg_stat(struct mg_connection *nc, int ev, void *p) {
   (void) ev;
   (void) p;
 
+  char stat_msg[256] = { 0 };
+  int cgw_stat = bs_cgw_get_stat();
+  if (CGW_STAT_PKG_DOWNING == cgw_stat ||
+      CGW_STAT_PKG_NEW == cgw_stat) {
+
+      snprintf(stat_msg, sizeof(stat_msg), "{ \"stat\": \"%s\" }", "down");
+  }
+  else if (CGW_STAT_PKG_READY == cgw_stat) {
+      snprintf(stat_msg, sizeof(stat_msg), "{ \"stat\": \"%s\" }", "ready");
+  }
+  else if (CGW_STAT_PKG_FAIL == cgw_stat) {
+      snprintf(stat_msg, sizeof(stat_msg), "{ \"stat\": \"%s\" }", "fail");
+  }
+  else {
+      snprintf(stat_msg, sizeof(stat_msg), "{ \"stat\": \"%s\" }", "none");
+  }
+
+
   mg_printf(nc, "%s", "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n");
-  mg_printf_http_chunk(nc, "{ \"stat\": %s }", "succ");//g_ctx.pkg_stat);
+  mg_printf_http_chunk(nc, stat_msg);
   mg_send_http_chunk(nc, "", 0); /* Send empty chunk, the end of response */
+
+  fprintf(stdout, "/api/pkg/stat %d chunked \n%s\n\n", 200, stat_msg);
 }
 
 static void handle_tdr_stat(struct mg_connection *nc, int ev, void *p) {

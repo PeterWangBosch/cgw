@@ -61,7 +61,13 @@ struct bs_device_app {
   struct bs_app_intaller_job job;
 };
 
-
+typedef enum bs_cgw_stat_e {
+    CGW_STAT_IDLE = 0,
+    CGW_STAT_PKG_NEW,
+    CGW_STAT_PKG_DOWNING,
+    CGW_STAT_PKG_READY,
+    CGW_STAT_PKG_FAIL,
+}bs_cgw_stat_t;
 
 #define BS_MAX_DEVICE_APP_NUM 128
 struct bs_context {
@@ -73,6 +79,8 @@ struct bs_context {
   char eth_installer_port[8];
   struct bs_device_app *loading_app;// TODO: support downloading in paralell
   struct bs_device_app apps[BS_MAX_DEVICE_APP_NUM];
+
+  volatile int cgw_stat;
 };
 
 union bs_core_request_data {
@@ -119,6 +127,10 @@ int bs_core_req_eth_instl_prepare(struct bs_device_app *);
 int bs_core_req_eth_instl_act(struct bs_device_app *);
 
 unsigned int bs_print_json_upgrade_stat(struct bs_device_app *, char *);
+
+int bs_cgw_set_stat(int new_stat);
+int bs_cgw_get_stat();
+
 #ifdef __cplusplus
 }
 #endif /* __cplusplus */
