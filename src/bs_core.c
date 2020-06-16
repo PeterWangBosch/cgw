@@ -383,6 +383,7 @@ struct bs_device_app * bs_core_eth_installer_down(struct mg_connection * nc)
   char ip[32];
   int i;
 
+  printf("VDCM Down!");
   dlc_report_status_finish_fail();
   for (i=0; i<BS_MAX_DEVICE_APP_NUM; i++) {
     // invalid device

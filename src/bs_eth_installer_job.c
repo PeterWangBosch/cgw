@@ -21,10 +21,10 @@ void bs_set_get_vers_flag(int v)
 
 
 static char * ftp_links[4] = {
-"/xcu8.0_kernel_v1.1.2.bins\\\", \\\"size\\\": 6898540, \\\"checksum\\\": \\\"83c1238dbdb2d1bb38c00056f5a70e9d\\\", \\\"signature\\\": \\\"XXXXXX\\\", \\\"credential\\\": \\\"admin:12345\\\"}\"",
-"/xcu8.0_rootfs_hh.bin.zip\\\", \\\"size\\\": 12359749, \\\"checksum\\\": \\\"69666b0d1a9b275ca50b3a090e0675fd\\\", \\\"signature\\\": \\\"XXXXXX\\\", \\\"credential\\\": \\\"admin:12345\\\"}\"",
-"/xcu8.0_app_hh.bin.zip\\\", \\\"size\\\": 207429, \\\"checksum\\\": \\\"9d9a4bf90a550170865b9bc2122bfa54\\\", \\\"signature\\\": \\\"XXXXXX\\\", \\\"credential\\\": \\\"admin:12345\\\"}\"",
-"/mcu_SH0105A2T1.hex\\\", \\\"size\\\": 3288766, \\\"checksum\\\": \\\"262e747b622a0e2071e223d728d614ba\\\", \\\"signature\\\": \\\"XXXXXX\\\", \\\"credential\\\": \\\"admin:12345\\\"}\"",
+":5000/xcu8.0_kernel_v1.1.2.bins\\\", \\\"size\\\": 6898540, \\\"checksum\\\": \\\"83c1238dbdb2d1bb38c00056f5a70e9d\\\", \\\"signature\\\": \\\"XXXXXX\\\", \\\"credential\\\": \\\"admin:12345\\\"}\"",
+":5000/xcu8.0_rootfs_hh.bin.zip\\\", \\\"size\\\": 12359749, \\\"checksum\\\": \\\"69666b0d1a9b275ca50b3a090e0675fd\\\", \\\"signature\\\": \\\"XXXXXX\\\", \\\"credential\\\": \\\"admin:12345\\\"}\"",
+":5000/xcu8.0_app_hh.bin.zip\\\", \\\"size\\\": 208936, \\\"checksum\\\": \\\"b3a788834e9a9927a7a063071dc10816\\\", \\\"signature\\\": \\\"XXXXXX\\\", \\\"credential\\\": \\\"admin:12345\\\"}\"",
+":5000/mcu_SH0105A2T1.hex\\\", \\\"size\\\": 3288766, \\\"checksum\\\": \\\"262e747b622a0e2071e223d728d614ba\\\", \\\"signature\\\": \\\"XXXXXX\\\", \\\"credential\\\": \\\"admin:12345\\\"}\"",
 };
 
 //struct mg_connection * find_remote (struct mg_connection * nc)
@@ -52,7 +52,6 @@ static struct cJSON * find_json_child(struct cJSON * root, char * label)
   }
   return iterator;
 }
-
 static int bs_eth_installer_resp_handler(char * cmd, struct cJSON * resp, struct bs_device_app * origin)
 {
   static int bin_index = 0;// TODO: from L1_Manifate
@@ -70,13 +69,13 @@ static int bs_eth_installer_resp_handler(char * cmd, struct cJSON * resp, struct
     printf("recv from SelfInstaller: MSG_REQUEST_VERSIONS_RESULT\n");
     // insert to que of eth installer 
     printf("get versions of VDCM: %s \n", resp->valuestring);
-    if (g_get_vers_flag) {
-      strcpy(g_vers, resp->valuestring);
-      bs_set_get_vers_flag(0);
-    } else  {
+    //if (g_get_vers_flag) {
+    //  strcpy(g_vers, resp->valuestring);
+    //  bs_set_get_vers_flag(0);
+    //} else  {
       strcpy(g_vers, resp->valuestring);
       bs_eth_installer_stat(origin, msg);
-    }
+    //}
   } else if (strstr(cmd, MSG_PREPARE_ACTIVATION_RESULT) != NULL) {
     printf("recv from SelfInstaller: MSG_PREPARE_ACTIVATION_RESULT\n");
     bs_eth_installer_req_act(origin);
@@ -250,10 +249,10 @@ void bs_eth_installer_msg_handler(struct mg_connection *nc, int ev, void *p)
 
       app = find_app_by_nc(nc);
 
-      if (app) {
-        bs_set_get_vers_flag(1);
-        bs_eth_installer_req_vers(app, msg);
-      }
+      //if (app) {
+      //  bs_set_get_vers_flag(1);
+      //  bs_eth_installer_req_vers(app, msg);
+      //}
       break;
     case MG_EV_RECV:
       // first 4 bytes for length
