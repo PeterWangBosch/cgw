@@ -97,7 +97,10 @@ union bs_core_request_data {
 
 #define BS_CORE_REQ_ETHECU_VER 6
 #define BS_CORE_REQ_REC_ERR 7
-#define BS_CORE_REQ_PKG_FAIL 21
+#define BS_CORE_REQ_PKG_INST 21
+#define BS_CORE_REQ_PKG_RUN  22
+#define BS_CORE_REQ_PKG_SUCC 28
+#define BS_CORE_REQ_PKG_FAIL 29
 
 
 struct bs_core_request {

@@ -182,7 +182,43 @@ static void handle_pkg_stat(struct mg_connection *nc, int ev, void *p) {
   mg_printf_http_chunk(nc, stat_msg);
   mg_send_http_chunk(nc, "", 0); /* Send empty chunk, the end of response */
 
-  fprintf(stdout, "/api/pkg/stat %d chunked \n%s\n\n", 200, stat_msg);
+  fprintf(stdout, "/api/pkg/stat %d chunked %s\n\n", 200, stat_msg);
+}
+
+static void handle_pkg_inst(struct mg_connection* nc, int ev, void* p) 
+{
+    (void)ev;
+    (void)p;
+
+    char rsp_msg[256] = { 0 };
+    int cgw_stat = bs_cgw_get_stat();
+    if (CGW_STAT_PKG_READY == cgw_stat) {
+
+        snprintf(rsp_msg, sizeof(rsp_msg), "{ \"result\":\"fail\",  \"err_msg\":\"pkg not ready\"}");
+    }
+    else  {
+
+        //req backgroud thread to inst pkg
+        struct bs_core_request core_req;
+
+        bs_init_core_request(&core_req);
+        core_req.cmd = BS_CORE_REQ_PKG_INST;
+        core_req.payload.l1_mani = &g_l1_mani;
+
+        fprintf(stdout, "Core request PKG_INST\n");
+        if (write(bs_get_core_ctx()->core_msg_sock[0], &core_req, sizeof(core_req)) < 0) {
+            fprintf(stderr, "Writing core sock fail(%d)\n", errno);
+            snprintf(rsp_msg, sizeof(rsp_msg), "{ \"result\":\"fail\",  \"err_msg\":\"orch internal error\"}");
+        }
+
+        snprintf(rsp_msg, sizeof(rsp_msg), "{ \"result\":\"succ\",  \"err_msg\":\"pkg inst on going\"}");
+    }
+
+    mg_printf(nc, "%s", "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n");
+    mg_printf_http_chunk(nc, rsp_msg);
+    mg_send_http_chunk(nc, "", 0); /* Send empty chunk, the end of response */
+
+    fprintf(stdout, "<- /api/pkg/inst %d %s\n\n", 200, rsp_msg);
 }
 
 static void handle_tdr_stat(struct mg_connection *nc, int ev, void *p) {
@@ -289,9 +325,9 @@ static void handle_tdr_run(struct mg_connection *nc, int ev, void *p) {
   bs_init_core_request(&core_req);
   strcpy(core_req.dev_id, dev_id);
   core_req.cmd = BS_CORE_REQ_TDR_RUN;
-  printf("Core request TDR_RUN!\n");
+  fprintf(stdout, "Core request TDR_RUN!\n");
   if (write(bs_get_core_ctx()->core_msg_sock[0], &core_req, sizeof(core_req)) < 0) {
-    printf("Writing core sock error!\n");
+    fprintf(stdout, "Writing core sock error!\n");
     result = api_resp_err_fail;
     goto last_step; 
   }
@@ -361,9 +397,9 @@ static void handle_upload(struct mg_connection *nc, int ev, void *p) {
       strcpy(core_req.dev_id, bs_get_core_ctx()->loading_app->dev_id);
       core_req.conn_id = (unsigned long) nc->user_data;
       core_req.cmd = BS_CORE_REQ_PKG_READY;
-      printf("Core request: PKG_READY\n");
+      fprintf(stdout, "Core request: PKG_READY\n");
       if (write(bs_get_core_ctx()->core_msg_sock[0], &core_req, sizeof(core_req)) < 0) {
-        printf("Writing core sock error!");
+        fprintf(stdout, "Writing core sock error!");
       }
 
       //bs_get_core_ctx()->loading_app->pkg_stat.stat = bs_pkg_stat_succ;
@@ -393,7 +429,7 @@ static void dlc_handle_background_msg()
         return;
 
     struct bs_core_request req = { 0 };
-    if (read(fd, &req, sizeof(req)) < 0) {
+    if (read(fd, &req, sizeof(req)) <= 0) {
         perror("Error reading worker notify sock");
         return;
     }
@@ -401,6 +437,12 @@ static void dlc_handle_background_msg()
     switch (req.cmd) {
     case BS_CORE_REQ_PKG_READY:
         fprintf(stdout, "Main_Thrd:Recv background cmd: BS_CORE_REQ_PKG_READY\n");
+        break;
+    case BS_CORE_REQ_PKG_RUN:
+        fprintf(stdout, "Main_Thrd:Recv background cmd: BS_CORE_REQ_PKG_RUN\n");
+        break;
+    case BS_CORE_REQ_PKG_SUCC:
+        fprintf(stdout, "Main_Thrd:Recv background cmd: BS_CORE_REQ_PKG_SUCC\n");
         break;
     case BS_CORE_REQ_PKG_FAIL:
         fprintf(stdout, "Main_Thrd:Recv background cmd: BS_CORE_REQ_PKG_FAIL\n");
@@ -497,6 +539,7 @@ int main(int argc, char *argv[]) {
   mg_register_http_endpoint(nc, "/test/vers", handle_test_vers MG_UD_ARG(NULL));
   mg_register_http_endpoint(nc, "/pkg/new", handle_pkg_new MG_UD_ARG(NULL));
   mg_register_http_endpoint(nc, "/pkg/stat", handle_pkg_stat MG_UD_ARG(NULL));
+  mg_register_http_endpoint(nc, "/pkg/inst", handle_pkg_inst MG_UD_ARG(NULL));
   mg_register_http_endpoint(nc, "/tdr/run", handle_tdr_run MG_UD_ARG(NULL));
   mg_register_http_endpoint(nc, "/tdr/stat", handle_tdr_stat MG_UD_ARG(NULL));
   // Set up HTTP server parameters

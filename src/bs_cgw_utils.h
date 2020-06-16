@@ -33,7 +33,7 @@ typedef enum bs_dev_type_e {
 
 }bs_dev_type_e_t;
 //
-#define BS_MAX_MANI_PKG_NUM 4
+#define BS_MAX_MANI_PKG_NUM 32
 #define BS_MAX_DEV_ID_LEN   32
 #define BS_PKG_CHK_SUM_LEN  32
 #define BS_MAX_PKG_URL_LEN  128

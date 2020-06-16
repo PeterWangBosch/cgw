@@ -519,18 +519,7 @@ int bs_core_req_tdr_stat_update(struct bs_core_request* req)
 }
 
 
-int bs_core_req_pkg_ready(struct bs_core_request* req)
-{
-  struct bs_device_app *app = bs_core_find_app(req->dev_id);
 
-  if (app == NULL) {
-    return 0;
-  }
-  //assert(app->pkg_stat.type == BS_PKG_TYPE_CAN_ECU||BS_PKG_TYPE_ORCH);
-  app->pkg_stat.stat = bs_pkg_stat_succ;
-
-  return 1;
-}
 
 static const char *pick_file_name(const char *file_path) {
   int siz = (int)strlen(file_path);
@@ -586,7 +575,7 @@ int bs_core_req_pkg_new(struct bs_core_request* req)
     int rc = 0;
     assert(req);
 
-    ////down pkg for dev_type == can||can-fd
+    //down pkg for dev_type == can||can-fd
     bs_l1_manifest_t* l1_mani = req->payload.l1_mani;
     for (int i = 0; i < l1_mani->pkg_num; ++i) {
         bs_l1_manifest_pkg_t* pkg = &l1_mani->packages[i];
@@ -638,43 +627,181 @@ DONE:
     }
 
     return (rc);
-
-
-  //struct bs_eth_installer_core_request inst_req;
-  //struct bs_device_app *app = bs_core_find_app(req->dev_id);
-  //if (app == NULL) {
-  //  return 0;
-  //}
-
-  //switch(app->pkg_stat.type) {
-  //  case BS_PKG_TYPE_CAN_ECU:
-  //  case BS_PKG_TYPE_ORCH:
-  //    // local download & cache
-  //    printf("core recv: pkg new CAN ECU\n");
-  //    app->pkg_stat.stat = bs_pkg_stat_loading;
-  //    bs_get_core_ctx()->loading_app = app;
-  //    break;
-  //  case BS_PKG_TYPE_ETH_ECU:
-  //    printf("core recv: pkg new ETH ECU\n");
-  //    //TODO: start remote installer job
-  //    bs_init_eth_installer_core_request(&inst_req, app);
-  //    inst_req.cmd = BS_ETH_INSTALLER_VERS;
-  //    inst_req.app = app;
-  //    strcpy(inst_req.payload.info, req->payload.info);
-  //    if (write(bs_get_core_ctx()->eth_installer_msg_sock[0], &inst_req, sizeof(inst_req)) < 0) {
-  //      printf("Writing eth instl sock error!\n");
-  //      return 0;
-  //    }
-
-  //    break;
-  //  case BS_PKG_TYPE_INVALID:
-  //  default:
-  //    return 0;
-  //}
-
-  //return 1;
 }
 
+int bs_core_req_pkg_ready(struct bs_core_request* req)
+{
+    (void)(req);
+    int rc = 0;
+
+
+    fprintf(stdout, "bs_core_req_pkg_ready, enter ...\n\n");
+    {
+        //nothing to do now
+        goto DONE;
+    }
+
+DONE:
+    fprintf(stdout, "bs_core_req_pkg_ready, leave =%d\n\n", rc);
+    return (rc);
+}
+
+static int bs_core_inst_can_pkg(bs_l1_manifest_pkg_t* pkg)
+{
+    assert(pkg);
+
+    int rc = 0;
+    FILE* fp = NULL;
+
+    char cmd[256] = { 0 };
+    char out[512] = { 0 };
+    char pkg_filepath[256] = { 0 };
+
+    snprintf(pkg_filepath, sizeof(pkg_filepath), 
+        "share/%s", pick_file_name(pkg->pkg_url));
+
+    struct bs_device_app* app = bs_core_find_app(pkg->dev_id);
+    if (NULL == app) {
+        fprintf(stderr,
+            "ERROR,bs_core_inst_can_pkg, ecu not online(%s|%s)\n", 
+            pkg->dev_id, pkg_filepath);
+
+        rc = -1;
+        goto DONE;
+    }
+
+
+    snprintf(cmd, sizeof(cmd),
+        "sh /tdr/usr/bin/aaas_runtask.sh RDA %s", pkg_filepath);
+    fwrite(cmd, 1, strlen(cmd), stdout);
+    fwrite("\n\n", 1, 2, stdout);
+
+    if ((fp = popen(cmd, "r")) == NULL) {
+        app->upgrade_stat.progress_percent = 0;
+
+        fprintf(stderr,
+            "ERROR,bs_core_inst_can_pkg, open cmd fail(%d)(%s|%s)\n",
+            errno, pkg->dev_id, pkg_filepath);
+
+        rc = -2;
+        goto DONE;
+    }
+
+    while (fgets(out, sizeof(out) - 1, fp) != NULL) {
+
+        fwrite(out, 1, strlen(out), stdout);
+        //TODO:check fail cond
+
+        app->upgrade_stat.progress_percent += 20;
+        if (app->upgrade_stat.progress_percent >= 100)
+            app->upgrade_stat.progress_percent = 99;
+        sleep(1);
+    }
+    app->upgrade_stat.progress_percent = 100;
+
+    fprintf(stdout,
+        "INFO,bs_core_inst_can_pkg, ecu inst succ(%s|%s)\n",
+        pkg->dev_id, pkg_filepath);
+
+DONE:
+    if(fp)
+        pclose(fp);
+
+    return (rc);
+}
+
+#define BS_ETH_INST_PKG_NUM 4
+typedef struct eth_inst_pkg_group_s {
+
+    int pkg_num;
+    int inst_id;
+    int inst_stat;
+
+    char dev_id[BS_MAX_DEV_ID_LEN + 1];
+    char ftp_uri[BS_ETH_INST_PKG_NUM][BS_MAX_PKG_URL_LEN + 1];
+
+}eth_inst_pkg_group_t;
+
+static int bs_core_inst_eth_pkg(eth_inst_pkg_group_t* grp)
+{
+    (void)(grp);
+    return 0;
+}
+
+static int bs_core_req_pkg_inst(struct bs_core_request* req)
+{
+    (void)(req);
+    int rc = 0;
+    char eth_ftp_uri[256] = { 0 };
+
+    bs_l1_manifest_t* mani = req->payload.l1_mani;
+
+    fprintf(stdout, "bs_core_req_pkg_inst, enter ...\n\n");
+
+    //install all can/can-fd first 
+    for (int i = 0; i < mani->pkg_num; ++i) {
+
+        bs_l1_manifest_pkg_t* pkg = &mani->packages[i];
+        if (pkg->dev_type == BS_DEV_TYPE_CAN ||
+            pkg->dev_type == BS_DEV_TYPE_CAN_FD)
+        {
+            rc = bs_core_inst_can_pkg(pkg);
+            if (rc) {
+                fprintf(stderr,
+                    "ERROR,bs_core_req_pkg_inst,inst pkg fail(%s:%s)\n",
+                    pkg->dev_id, pick_file_name(pkg->pkg_url));
+
+                goto DONE;
+            }
+            else {
+                fprintf(stdout, "INFO,bs_core_req_pkg_inst,inst pkg succ(%s:%s)\n",
+                    pkg->dev_id, pick_file_name(pkg->pkg_url));
+            }
+        }//inst can/can-fd pkg 
+    }
+
+    //install all eth pkg/only support 1 group now 
+    eth_inst_pkg_group_t eth_grp = { 0 };
+    for (int i = 0; i < mani->pkg_num; ++i) {
+
+        bs_l1_manifest_pkg_t* pkg = &mani->packages[i];
+        if (pkg->dev_type != BS_DEV_TYPE_ETH) {
+            continue;
+        }
+
+        if (eth_grp.dev_id[0] == 0) {
+            SAFE_CPY_STR(eth_grp.dev_id, pkg->dev_id, sizeof(eth_grp.dev_id));
+        }        
+        snprintf(eth_ftp_uri, sizeof(eth_ftp_uri),
+            "ftp://%s/%s", g_ctx.tlc_ip, pick_file_name(pkg->pkg_url));
+
+        SAFE_CPY_STR(eth_grp.ftp_uri[eth_grp.pkg_num], 
+            eth_ftp_uri, BS_MAX_PKG_URL_LEN);
+
+        eth_grp.pkg_num += 1;
+        if (eth_grp.pkg_num >= BS_ETH_INST_PKG_NUM)
+            break;
+    }
+    if (eth_grp.pkg_num > 0) {
+        rc = bs_core_inst_eth_pkg(&eth_grp);
+        if (rc) {
+            fprintf(stderr,
+                "ERROR,bs_core_req_pkg_inst,inst eth grp fail(%s)\n",
+                eth_grp.dev_id);
+
+            goto DONE;
+        }
+        else {
+            fprintf(stdout, 
+                "INFO,bs_core_req_pkg_inst,inst eth grp succ(%s)\n",
+                eth_grp.dev_id);
+        }
+    }
+
+DONE:
+    fprintf(stdout, "bs_core_req_pkg_inst, leave =%d\n\n", rc);
+    return (rc);
+}
 
 //--------------------------------------------------------------
 //
@@ -705,10 +832,11 @@ void *bs_core_thread(void *param)
       case BS_CORE_REQ_PKG_READY:
         bs_cgw_set_stat(CGW_STAT_PKG_READY);
         bs_core_req_pkg_ready(&req);
-        //bs_core_req_tdr_run(&req);//TODO: remove it when HMI is ready
+        //TODO:auto inst for demo
         break;
-      case BS_CORE_REQ_TDR_RUN:
-        bs_core_req_tdr_run(&req);
+      case BS_CORE_REQ_PKG_INST:
+        bs_cgw_set_stat(BS_CORE_REQ_PKG_INST);
+        bs_core_req_pkg_inst(&req);
         break;
       case BS_CORE_REQ_TDR_STAT_UPDATE:
         bs_core_req_tdr_stat_update(&req);
