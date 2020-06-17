@@ -45,6 +45,10 @@ struct bs_app_pkg_stat {
   const char *stat;
 };
 
+typedef enum bs_eth_job_stat_e{
+    ETH_STAT_IDLE = 0,
+}bs_eth_job_stat_t;
+
 struct bs_app_intaller_job {
   char ip_addr[32];
   unsigned int internal_id;
@@ -52,13 +56,25 @@ struct bs_app_intaller_job {
   struct mg_connection *remote;
 };
 
+
+#define BS_MAX_VER_NUM 4
+#define BS_MAX_SOFT_ID_LEN 32
+#define BS_MAX_SOFT_VER_LEN 16
+
+struct bs_device_ver {
+    char soft_id[BS_MAX_SOFT_ID_LEN];
+    char soft_ver[BS_MAX_SOFT_VER_LEN];
+};
 struct bs_device_app {
+
+  bool slot_used;
   char dev_id[32];
-  char soft_id[32];
   bool door_module; 
   struct bs_app_pkg_stat pkg_stat;
   struct bs_app_upgrade_stat upgrade_stat;
   struct bs_app_intaller_job job;
+
+  struct bs_device_ver dev_vers[BS_MAX_VER_NUM];
 };
 
 typedef enum bs_cgw_stat_e {
@@ -121,7 +137,7 @@ void bs_init_app_config(const char * filename);
 void bs_init_device_app(struct bs_device_app *);
 void bs_init_core_request(struct bs_core_request*);
 struct bs_device_app * bs_core_find_app(const char *);
-struct bs_device_app * find_app_by_nc(struct mg_connection *);
+struct bs_device_app * find_app_by_nc(struct mg_connection*, const char* ecu_ip);
 void *bs_core_thread(void *);
 
 struct bs_device_app * bs_core_eth_installer_up(struct mg_connection *);

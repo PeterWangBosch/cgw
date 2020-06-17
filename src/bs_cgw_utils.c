@@ -126,9 +126,6 @@ int bs_load_app_config(const char* file_name, bs_device_app_t* apps, int max_app
             if (!strcmp("dev_id", j_itm->string)) {
                 SAFE_CPY_STR(app->dev_id, j_itm->valuestring, sizeof(app->dev_id));
             }
-            else if (!strcmp("soft_id", j_itm->string)) {
-                SAFE_CPY_STR(app->soft_id, j_itm->valuestring, sizeof(app->soft_id));
-            }
             else if (!strcmp("door_module", j_itm->string)) {
                 app->door_module = (bool)(j_itm->valueint);
             }
@@ -229,7 +226,7 @@ int bs_save_app_config(const char* filename, bs_device_app_t* apps, int max_app)
     {
         for (int i = 0; i < max_app; ++i) {
             bs_device_app_t* app = &apps[i];
-            if (app->dev_id[0] == 0 && app->soft_id[0] == 0)
+            if (app->dev_id[0] == 0)
                 continue;
 
             // avoid buf overflow
@@ -242,7 +239,6 @@ int bs_save_app_config(const char* filename, bs_device_app_t* apps, int max_app)
             W_JCHR('{');
             {
                 W_JBUF("dev_id", app->dev_id); W_JCHR(',');
-                W_JBUF("soft_id", app->soft_id); W_JCHR(',');
                 W_JINT("door_module", app->door_module); W_JCHR(',');
 
                 W_JOBJ_ENT("pkg_stat");

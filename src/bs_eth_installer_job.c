@@ -53,6 +53,80 @@ static struct cJSON * find_json_child(struct cJSON * root, char * label)
   return iterator;
 }
 
+static int bs_eth_ecu_ver_update(struct bs_device_app* app, const char* ver_cstr)
+{
+    int rc = 0;
+
+    struct cJSON* root = NULL;
+    struct cJSON* vers = NULL;
+    struct cJSON* ver = NULL;
+
+    char ver_json_str[512] = { 0 };
+
+    int j_i = 0, c_i = 0;
+    int c_m = (int)(strlen(ver_cstr));
+    int j_m = (int)(sizeof(ver_json_str) - 1);
+
+    for (; c_i < c_m;) {
+        if (ver_cstr[c_i] == '\\' && c_i + 1 < c_m && ver_cstr[c_i + 1] == 'n') {
+            c_i += 2;
+            continue;
+        }
+        if (ver_cstr[c_i] == '\\' && c_i + 1 < c_m && ver_cstr[c_i + 1] == '"') {
+            c_i += 1;
+            continue;
+        }
+
+        ver_json_str[j_i] = ver_cstr[c_i];
+        j_i += 1;
+        c_i += 1;
+
+        if (j_i + 1 >= j_m)
+            break;
+        if (c_i + 1 >= c_m)
+            break;
+    }
+    ver_json_str[j_i] = '\0';
+
+    root = cJSON_Parse(ver_json_str);
+    if (root == NULL) {
+        fprintf(stderr, 
+            "ERROR,UPD_VERS,parse vers to json object fail\n");
+
+        rc = -1;
+        goto DONE;
+    }
+    vers = cJSON_GetObjectItem(root, "versions");
+    if (vers == NULL) {
+        fprintf(stderr,
+            "ERROR,UPD_VERS,[/versions] not find\n");
+
+        rc = -1;
+        goto DONE;
+    }
+
+    int v = 0;
+    memset(app->dev_vers, 0, sizeof(app->dev_vers));
+    cJSON_ArrayForEach(ver, vers) {
+        SAFE_CPY_STR(app->dev_vers[v].soft_id, ver->string, BS_MAX_SOFT_ID_LEN);
+        SAFE_CPY_STR(app->dev_vers[v].soft_ver, ver->valuestring, BS_MAX_SOFT_VER_LEN);
+
+        ++v;
+        if (v >= BS_MAX_VER_NUM)
+            break;
+    }
+    //TODO:change report json ?
+    //there is no way to get dev_id
+    strcpy(app->dev_id, "VDCM");
+
+DONE:
+    if (root)
+        cJSON_Delete(root);
+
+
+    return (rc);
+}
+
 static int bs_eth_installer_resp_handler(char * cmd, struct cJSON * resp, struct bs_device_app * origin)
 {
   static int bin_index = 0;// TODO: from L1_Manifate
@@ -70,11 +144,12 @@ static int bs_eth_installer_resp_handler(char * cmd, struct cJSON * resp, struct
     printf("recv from SelfInstaller: MSG_REQUEST_VERSIONS_RESULT\n");
     // insert to que of eth installer 
     printf("get versions of VDCM: %s \n", resp->valuestring);
-    if (g_get_vers_flag) {
-      strcpy(g_vers, resp->valuestring);
+
+    bs_eth_ecu_ver_update(origin, resp->valuestring);
+
+    if (g_get_vers_flag) {      
       bs_set_get_vers_flag(0);
-    } else  {
-      strcpy(g_vers, resp->valuestring);
+    } else  {      
       bs_eth_installer_stat(origin, msg);
     }
   } else if (strstr(cmd, MSG_PREPARE_ACTIVATION_RESULT) != NULL) {
@@ -238,46 +313,48 @@ void bs_clean_str(char* in, char* out)
 
 void bs_eth_installer_msg_handler(struct mg_connection *nc, int ev, void *p)
 {
-  struct mbuf *io = &nc->recv_mbuf;
-  struct bs_device_app * app = NULL;
-  unsigned int len = 0;
-  (void) p;
-  static char msg[512];
+    (void)p;
 
-  switch (ev) {
-    case MG_EV_ACCEPT:
-      bs_core_eth_installer_up(nc);
+    struct mbuf* io = &nc->recv_mbuf;
+    struct bs_device_app* app = NULL;
+    char msg[512] = { 0 };
 
-      app = find_app_by_nc(nc);
+    switch (ev) {
+    case MG_EV_ACCEPT: {
 
-      if (app) {
-        bs_set_get_vers_flag(1);
-        bs_eth_installer_req_vers(app, msg);
-      }
-      break;
+        app = bs_core_eth_installer_up(nc);
+        if (app) {
+            bs_eth_installer_req_vers(app, msg);
+        }
+    }break;
+
+
     case MG_EV_RECV:
-      // first 4 bytes for length
-      len = io->buf[3] + (io->buf[2] << 8) + (io->buf[1] << 16) + (io->buf[0] << 24);
-      //TODO: parse JSON
-      printf("Recv raw msg from sel-finstaller: %s", &(io->buf[4]));
+        // first 4 bytes for length
+        //len = io->buf[3] + (io->buf[2] << 8) + (io->buf[1] << 16) + (io->buf[0] << 24);
+        //TODO: parse JSON
+        fprintf(stdout, "INFO,ECU_MSG,raw:%s", &(io->buf[4]));
 
-      (void) len;
-      app = find_app_by_nc(nc);
-      if (app) {
+        app = find_app_by_nc(nc, NULL);
+        if (!app) {
+            fprintf(stderr, "ERR,ECU_MSG,no app find");
+            break;
+        }
+
         bs_clean_str(&(io->buf[4]), msg);
-        printf("Cleaned msg from sel-finstaller: %s", msg);
+        fprintf(stdout, "INFO,ECU_MSG,%s", msg);
         bs_eth_installer_msg_parse(msg, app);
-      } else {
-        printf("response from wrong installer\n");        
-      }
-      mbuf_remove(io, io->len);       // Discard message from recv buffer
-      break;
+
+        mbuf_remove(io, io->len);
+        break;
+
     case MG_EV_CLOSE:
-      bs_core_eth_installer_down(nc);
-      break;
+        bs_core_eth_installer_down(nc);
+        break;
+
     default:
-      break;
-  }
+        break;
+    }
 }
 
 void bs_eth_installer_req_pkg_new(struct bs_device_app * app, char *msg, char* payload)

@@ -65,7 +65,6 @@ void bs_init_device_app(struct bs_device_app *app)
 
   for (i=0; i<32; i++) {
     app->dev_id[0] = 0;
-    app->soft_id[0] = 0;
   }
   app->door_module = false;
 
@@ -121,10 +120,6 @@ void bs_init_app_config(const char * filename)
     {
        strcpy((char *)g_ctx.apps[cur_app_index-1].dev_id, val);
     }
-    if (strcmp(key ,"soft_id") == 0)
-    {
-       strcpy((char *)g_ctx.apps[cur_app_index-1].soft_id, val);
-    }
     if (strcmp(key ,"door_module") == 0)
     {
        g_ctx.apps[cur_app_index-1].door_module = (bool)atoi(val);
@@ -172,10 +167,9 @@ void bs_init_app_config(const char * filename)
   fclose(fp);
   fp = NULL;
 }
-void bs_core_init_ctx(const char * conf_file)
+void bs_core_init_ctx()
 {
   int i;
-  (void) conf_file;
 
  // char *filename="/vendor/etc/config.ini";
   char *filename="/data/etc/orchestrator/config.ini";
@@ -200,29 +194,29 @@ void bs_core_init_ctx(const char * conf_file)
   strcpy(g_ctx.eth_installer_port, "1025");
 
   for(i=0; i<BS_MAX_DEVICE_APP_NUM; i++) {
-    bs_init_device_app(g_ctx.apps + i);
+    bs_init_device_app(&g_ctx.apps[i]);
   }
 
   //init from config.ini
-  //bs_load_app_config(filename, g_ctx.apps, BS_MAX_DEVICE_APP_NUM);
+  bs_load_app_config(filename, g_ctx.apps, BS_MAX_DEVICE_APP_NUM);
 
-  // TODO: just for NCT.
-  bs_init_device_app(g_ctx.apps);
-  strcpy(g_ctx.apps[0].dev_id, "WPC");
-  g_ctx.apps[0].pkg_stat.type = BS_PKG_TYPE_CAN_ECU;
-  g_ctx.apps[0].pkg_stat.stat = bs_pkg_stat_idle;
-  strcpy(g_ctx.apps[0].pkg_stat.name, "/data/var/orchestrator/wpc.1.0.0");
-  bs_init_device_app(g_ctx.apps);
-  strcpy(g_ctx.apps[1].dev_id, "VDCM");
-  g_ctx.apps[1].pkg_stat.type = BS_PKG_TYPE_ETH_ECU;
-  g_ctx.apps[1].pkg_stat.stat = bs_pkg_stat_idle;
-  bs_init_device_app(g_ctx.apps);
-  strcpy(g_ctx.apps[2].dev_id, "WPC");
-  g_ctx.apps[2].pkg_stat.type = BS_PKG_TYPE_CAN_ECU;
-  g_ctx.apps[2].pkg_stat.stat = bs_pkg_stat_idle;
-  strcpy(g_ctx.apps[2].pkg_stat.name, "/data/var/orchestrator/wpc.1.0.0");
+  //// TODO: just for NCT.
+  //bs_init_device_app(g_ctx.apps);
+  //strcpy(g_ctx.apps[0].dev_id, "WPC");
+  //g_ctx.apps[0].pkg_stat.type = BS_PKG_TYPE_CAN_ECU;
+  //g_ctx.apps[0].pkg_stat.stat = bs_pkg_stat_idle;
+  //strcpy(g_ctx.apps[0].pkg_stat.name, "/data/var/orchestrator/wpc.1.0.0");
+  //bs_init_device_app(g_ctx.apps);
+  //strcpy(g_ctx.apps[1].dev_id, "VDCM");
+  //g_ctx.apps[1].pkg_stat.type = BS_PKG_TYPE_ETH_ECU;
+  //g_ctx.apps[1].pkg_stat.stat = bs_pkg_stat_idle;
+  //bs_init_device_app(g_ctx.apps);
+  //strcpy(g_ctx.apps[2].dev_id, "WPC");
+  //g_ctx.apps[2].pkg_stat.type = BS_PKG_TYPE_CAN_ECU;
+  //g_ctx.apps[2].pkg_stat.stat = bs_pkg_stat_idle;
+  //strcpy(g_ctx.apps[2].pkg_stat.name, "/data/var/orchestrator/wpc.1.0.0");
 
-  bs_save_app_config(filename, g_ctx.apps, BS_MAX_DEVICE_APP_NUM);
+  //bs_save_app_config(filename, g_ctx.apps, BS_MAX_DEVICE_APP_NUM);
 
   g_ctx.cgw_stat = CGW_STAT_IDLE;
 }
@@ -247,10 +241,6 @@ unsigned int bs_print_json_upgrade_stat(struct bs_device_app *app, char* msg)
   strcpy(msg + pc, buf);
   pc += strlen(buf);
 
-  // soft_id
-  sprintf(buf, "\"soft_id\":\"%s\",", app->soft_id);
-  strcpy(msg + pc, buf);
-  pc += strlen(buf);
 
   // esti_time
   sprintf(buf, "\"esti_time\":\"%s\",", app->upgrade_stat.esti_time);
@@ -341,63 +331,79 @@ static unsigned int gen_internal_id() {
   return i;
 }
 
-struct bs_device_app * bs_core_eth_installer_up(struct mg_connection * nc)
+struct bs_device_app* bs_core_eth_installer_up(struct mg_connection * nc)
 {
-  //struct bs_device_app * result = NULL;
-  char ip[32];
-  int i = 1;// TODO: in NCT, we don't have accurate ip cofig of eth ecu
+    struct bs_device_app* app = NULL;
+    char ecu_ip[32] = { 0 };
 
-  // use {ip:port} as key to recognize installer
-  if (mg_sock_addr_to_str(&(nc->sa), 
-                          ip, 32,
-                          MG_SOCK_STRINGIFY_IP) <= 0) {
-    return NULL;
-  }
+    //use ecu ip to identify unique device
+    if (mg_sock_addr_to_str(&(nc->sa), ecu_ip, sizeof(ecu_ip),
+        MG_SOCK_STRINGIFY_IP) <= 0) {
 
-  printf("Eth SelfInstaller up: %s\n", ip);
+        fprintf(stderr, "ERROR,ECU_ONLINE,mg_sock_addr_to_str fail\n");
+        goto DONE;
+    }
+    
+    fprintf(stdout, "INFO,ECU_ONLINE,%s\n", ecu_ip);
 
-//  for (i=0; i<BS_MAX_DEVICE_APP_NUM; i++) {
-    // invalid device
-    //if (g_ctx.apps[i].dev_id[0] == 0) {
-    //  continue;
-    //}
+    app = find_app_by_nc(nc, ecu_ip);
 
-    // TODO: make sure we have config file to obtain installer's ip 
-    //if (strcmp(g_ctx.apps[i].job.ip_addr, ip) == 0) {
-      strcpy(g_ctx.apps[i].job.ip_addr, ip);
-      g_ctx.apps[i].job.internal_id = gen_internal_id();
-      g_ctx.apps[i].job.remote = nc;
-      return &(g_ctx.apps[i]);
-    //} 
-//  }
-  //return result;
+    //first time online
+    //find a free app slot to store
+    if (!app) {
+        for (int i = 0; i < BS_MAX_DEVICE_APP_NUM; i++) {
+            if (!g_ctx.apps[i].slot_used) {
+                app = &(g_ctx.apps[i]);
+                app->slot_used = true;
+            }
+        }
+
+        if (!app) {
+            fprintf(stderr, "ERROR,ECU_ONLINE,no free app slot\n");
+            goto DONE;
+        }
+    }
+
+    //update lasted connection    
+    memcpy(app->job.ip_addr, ecu_ip, sizeof(ecu_ip));
+    app->job.remote = nc;
+    app->job.internal_stat = ETH_STAT_IDLE;
+    app->job.internal_id = gen_internal_id();
+
+DONE:
+      return (app);
 }
 
-struct bs_device_app * find_app_by_nc(struct mg_connection * nc)
+struct bs_device_app * find_app_by_nc(struct mg_connection* nc, const char* ecu_ip)
 {
-  struct bs_device_app * result = NULL;
-  char ip[32];
-  int i;
+    struct bs_device_app* app = NULL;
+    char dev_ip[32] = { 0 };
 
-  // use {ip:port} as key to recognize installer
-  if (mg_sock_addr_to_str(&(nc->sa),
-                          ip, 32,
-                          MG_SOCK_STRINGIFY_IP) <= 0) {
-    return NULL;
-  }
+    if (!ecu_ip) {
+        if (mg_sock_addr_to_str(&(nc->sa), dev_ip, sizeof(dev_ip),
+            MG_SOCK_STRINGIFY_IP) <= 0) {
 
-  for (i=0; i<BS_MAX_DEVICE_APP_NUM; i++) {
-    // invalid device
-    if (g_ctx.apps[i].dev_id[0] == 0) {
-      continue;
+            fprintf(stderr, "ERROR,ECU_EVENT,mg_sock_addr_to_str fail\n");
+            goto DONE;
+        }
+
+        ecu_ip = dev_ip;
+    }
+    
+
+    for (int i = 0; i < BS_MAX_DEVICE_APP_NUM; i++) {
+        if (!g_ctx.apps[i].slot_used) {
+            continue;
+        }
+
+        if (strcmp(g_ctx.apps[i].job.ip_addr, ecu_ip) == 0) {
+            app = &(g_ctx.apps[i]);
+            break;
+        }
     }
 
-    if (strcmp(g_ctx.apps[i].job.ip_addr, ip) == 0) {
-      return &(g_ctx.apps[i]);
-    }
-  }
-
-  return result;
+DONE:
+    return (app);
 }
 
 struct bs_device_app * bs_core_eth_installer_down(struct mg_connection * nc)
