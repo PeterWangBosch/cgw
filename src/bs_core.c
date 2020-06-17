@@ -543,9 +543,10 @@ int bs_core_down_can_pkg(bs_l1_manifest_pkg_t* pkg)
 
     const char* pkg_name = pick_file_name(pkg->pkg_url);
 
-    snprintf(ftp_url, sizeof(ftp_url) - 1, "ftp://%s/%s", bs_get_core_ctx()->tlc_ip, pkg_name);
-    snprintf(cmd_buf, sizeof(cmd_buf) - 1, "curl -o /share/%s  %s", pkg_name, ftp_url);
+    snprintf(ftp_url, sizeof(ftp_url) - 1, "tftp://%s/%s", bs_get_core_ctx()->tlc_ip, pkg_name);
+    snprintf(cmd_buf, sizeof(cmd_buf) - 1, "curl -o /data/var/orchestrator/%s  %s", pkg_name, ftp_url);
     fwrite(cmd_buf, 1, strlen(cmd_buf), stdout);
+    fwrite("\n\n", 1, 2, stdout);
 
     if ((fp = popen(cmd_buf, "r")) == NULL) {
         fprintf(
@@ -558,7 +559,10 @@ int bs_core_down_can_pkg(bs_l1_manifest_pkg_t* pkg)
     }
     while (fgets(cmd_out, sizeof(cmd_out), fp) != NULL) {
         fwrite(cmd_out, 1, strlen(cmd_out), stdout);
-        //TODO:check curl work result
+        if (strstr(cmd_out, "Failed") != NULL) {
+            rc = -2;
+            goto DONE;
+        }
     }
     fprintf(stdout, "\n\n");
 
@@ -585,14 +589,15 @@ int bs_core_req_pkg_new(struct bs_core_request* req)
             rc = bs_core_down_can_pkg(pkg);
             if (rc) {
                 fprintf(stderr,
-                    "ERROR,bs_core_req_pkg_new,down pkg fail(%d:%s:%s)\n",
-                    pkg->dev_type, pkg->dev_id, pkg->pkg_url);
+                    "ERROR,bs_core_req_pkg_new,down pkg fail(%s:%s)\n",
+                    pkg->dev_id, pick_file_name(pkg->pkg_url));
 
                 goto DONE;
             }
             else {
-                fprintf(stdout, "INFO,bs_core_req_pkg_new,down pkg succ(%d:%s:%s)\n",
-                    pkg->dev_type, pkg->dev_id, pkg->pkg_url);
+                fprintf(stdout, 
+                    "INFO,bs_core_req_pkg_new,down pkg succ(%s:%s)\n",
+                    pkg->dev_id, pick_file_name(pkg->pkg_url));
             }
         }//down can/can-fd pkg      
     }
@@ -600,7 +605,7 @@ int bs_core_req_pkg_new(struct bs_core_request* req)
 DONE:
     if (rc) {
 
-        fprintf(stdout, "Core request BS_CORE_SVC_DOWN_FAIL\n");
+        fprintf(stdout, "Main notify BS_CORE_SVC_DOWN_FAIL\n");
         bs_cgw_set_stat(CGW_STAT_PKG_FAIL);
         //        
         struct bs_core_request core_req;
@@ -613,7 +618,7 @@ DONE:
         }
     }
     else {
-        fprintf(stdout, "Core request BS_CORE_REQ_PKG_READY\n");
+        fprintf(stdout, "Main notify BS_CORE_REQ_PKG_READY\n");
         bs_cgw_set_stat(CGW_STAT_PKG_READY);
         //
         struct bs_core_request core_req;
@@ -658,7 +663,7 @@ static int bs_core_inst_can_pkg(bs_l1_manifest_pkg_t* pkg)
     char pkg_filepath[256] = { 0 };
 
     snprintf(pkg_filepath, sizeof(pkg_filepath), 
-        "share/%s", pick_file_name(pkg->pkg_url));
+        "/data/var/orchestrator/%s", pick_file_name(pkg->pkg_url));
 
     struct bs_device_app* app = bs_core_find_app(pkg->dev_id);
     if (NULL == app) {

@@ -156,9 +156,13 @@ static void handle_pkg_new(struct mg_connection* nc, int ev, void* p) {
 }
 
 
-static void handle_pkg_stat(struct mg_connection *nc, int ev, void *p) {
+static void handle_pkg_stat(struct mg_connection *nc, int ev, void* ev_data) {
   (void) ev;
-  (void) p;
+
+  struct http_message* hm = (struct http_message*)ev_data;
+  if (!hm || hm->body.len <= 0) {
+      return;
+  }
 
   char stat_msg[256] = { 0 };
   int cgw_stat = bs_cgw_get_stat();
@@ -182,21 +186,24 @@ static void handle_pkg_stat(struct mg_connection *nc, int ev, void *p) {
   mg_printf_http_chunk(nc, stat_msg);
   mg_send_http_chunk(nc, "", 0); /* Send empty chunk, the end of response */
 
-  fprintf(stdout, "/api/pkg/stat %d chunked %s\n\n", 200, stat_msg);
+  fprintf(stdout, "/api/pkg/stat %d %s\n\n", 200, stat_msg);
 }
 
 static void handle_pkg_inst(struct mg_connection* nc, int ev, void* p) 
 {
     (void)ev;
-    (void)p;
+    
+    struct http_message* hm = (struct http_message*)p;
+    if (!hm || !hm->body.p || hm->body.len <= 0) {
+        return;
+    }
+    fprintf(stdout, "-> /api/pkg/inst  %s\n\n", hm->body.p);
+
+
 
     char rsp_msg[256] = { 0 };
     int cgw_stat = bs_cgw_get_stat();
     if (CGW_STAT_PKG_READY == cgw_stat) {
-
-        snprintf(rsp_msg, sizeof(rsp_msg), "{ \"result\":\"fail\",  \"err_msg\":\"pkg not ready\"}");
-    }
-    else  {
 
         //req backgroud thread to inst pkg
         struct bs_core_request core_req;
@@ -210,8 +217,18 @@ static void handle_pkg_inst(struct mg_connection* nc, int ev, void* p)
             fprintf(stderr, "Writing core sock fail(%d)\n", errno);
             snprintf(rsp_msg, sizeof(rsp_msg), "{ \"result\":\"fail\",  \"err_msg\":\"orch internal error\"}");
         }
-
-        snprintf(rsp_msg, sizeof(rsp_msg), "{ \"result\":\"succ\",  \"err_msg\":\"pkg inst on going\"}");
+        else {
+            snprintf(rsp_msg, sizeof(rsp_msg), "{ \"result\":\"succ\",  \"err_msg\":\"pkg inst on going\"}");
+        }
+    }
+    else  {
+        if (BS_CORE_REQ_PKG_INST == cgw_stat ||
+            BS_CORE_REQ_PKG_RUN == cgw_stat) {
+            snprintf(rsp_msg, sizeof(rsp_msg), "{ \"result\":\"succ\",  \"err_msg\":\"pkg inst has going\"}");
+        }
+        else {
+            snprintf(rsp_msg, sizeof(rsp_msg), "{ \"result\":\"fail\",  \"err_msg\":\"pkg inst can not run(%d)\"}", cgw_stat);
+        }
     }
 
     mg_printf(nc, "%s", "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n");
