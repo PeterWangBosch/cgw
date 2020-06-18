@@ -105,7 +105,7 @@ static void handle_pkg_new(struct mg_connection* nc, int ev, void* p) {
     }
 
 
-    if (!hm || !hm->body.p) {
+    if (!hm || hm->body.len <= 0) {
         return;
     }
 
@@ -195,7 +195,7 @@ static void handle_pkg_inst(struct mg_connection* nc, int ev, void* p)
     (void)ev;
     
     struct http_message* hm = (struct http_message*)p;
-    if (!hm || !hm->body.p || hm->body.len <= 0) {
+    if (!hm || hm->body.len <= 0) {
         return;
     }
     fprintf(stdout, "-> /api/pkg/inst  %s\n\n", hm->body.p);
@@ -484,6 +484,54 @@ static void dlc_msg_handler(struct mg_connection *nc, int ev, void *ev_data) {
     }
 }
 
+static void dlc_api_rpt_inv_handler(struct mg_connection* nc, int ev, void* ev_data) 
+{
+    (void)(ev);
+    (void)(ev_data);
+
+    if (ev == MG_EV_SEND) {
+        assert(nc && nc->user_data);
+
+        *((bool*)(nc->user_data)) = true;
+    }    
+}
+
+
+static int invoke_dlc_api_rpt_inv(const char* msg)
+{
+    int rc = 0;
+    bool going = true;
+
+    struct bs_context* g_ctx = bs_get_core_ctx();
+    struct mg_connection* nc = NULL;
+    struct mg_mgr mgr;
+
+    char dlc_api[256] = { 0 };
+    snprintf(dlc_api, sizeof(dlc_api), "http://%s/stat/inventory",
+        g_ctx->tlc_ip);
+
+
+
+    mg_mgr_init(&mgr, NULL);
+    nc = mg_connect_http(&mgr, MG_CB(dlc_api_rpt_inv_handler, NULL), dlc_api,
+        "Content-Type: application/json\r\n", msg);
+    if (NULL == nc) {
+        rc = -8;//session fail
+        fprintf(stderr, "ERR,RPT_INV,%s,session fail\n", dlc_api);
+        goto DONE;
+    }
+    nc->user_data = &going;
+
+    while (going) {
+        mg_mgr_poll(&mgr, 200);
+    }
+
+DONE:
+    mg_mgr_free(&mgr);
+
+    return (rc);
+}
+
 static void orch_report_inventory()
 {
     char* msg = NULL;
@@ -493,6 +541,8 @@ static void orch_report_inventory()
     cJSON* ecu = NULL;
     cJSON* ver = NULL;
     cJSON* vers = NULL;
+    cJSON* payload = NULL;
+    cJSON* vehicle = NULL;
 
     struct bs_context* g_ctx = bs_get_core_ctx();
     if (g_ctx->tlc == NULL) {
@@ -500,26 +550,75 @@ static void orch_report_inventory()
         return;
     }
 
-    //
+
     root = cJSON_CreateObject();
     if (!root) {
-        fprintf(stderr, "ERR,RPT_INV,alloc json root object fail\n");
+        fprintf(stderr, "ERR,RPT_INV,alloc / object fail\n");
         goto DONE;
     }
-    ///orchestrator
-    ele = cJSON_CreateString(ORCH_VER" "ORCH_MAK);
-    if (!ele) {
-        fprintf(stderr, "ERR,RPT_INV,alloc orch ver object fail\n");
-        goto DONE;
+    {
+        /*
+        {
+            "messageType": "MockData",
+            "correlationId": "MockData",
+            "payload": {
+                "fotaProtocolVersion": "HHFOTA-0.1",
+                "vehicleVersion": {
+                    "orchestrator": "0.1.0.0",
+                    "dlc": "0.1.0.0"
+                },
+        */
+        ele = cJSON_CreateString("VehicleData");
+        if (!ele) {
+            fprintf(stderr, "ERR,RPT_INV,alloc /VehicleData string fail\n");
+            goto DONE;
+        }
+        cJSON_AddItemToObject(root, "messageType", ele);
+        cJSON_AddItemReferenceToObject(root, "correlationId", ele);
+
+        payload = cJSON_CreateObject();
+        if (!payload) {
+            fprintf(stderr, "ERR,RPT_INV,alloc /payload object fail\n");
+            goto DONE;
+        }
+        {
+            ele = cJSON_CreateString("HHFOTA-0.1");
+            if (!ele) {
+                fprintf(stderr, "ERR,RPT_INV,alloc /payload/fotaProtocolVersion string fail\n");
+                goto DONE;
+            }
+            cJSON_AddItemToObject(payload, "fotaProtocolVersion", ele);
+
+            vehicle = cJSON_CreateObject();
+            if(!vehicle) {
+                fprintf(stderr, "ERR,RPT_INV,alloc /payload/vehicleVersion object fail\n");
+                goto DONE;
+            }
+            cJSON_AddItemToObject(payload, "vehicleVersion", vehicle);
+            {
+                ele = cJSON_CreateString("HHFOTA-0.1");
+                if (!ele) {
+                    fprintf(stderr, "ERR,RPT_INV,alloc /payload/fotaProtocolVersion string fail\n");
+                    goto DONE;
+                }
+                cJSON_AddItemToObject(vehicle, "fotaProtocolVersion", ele);
+
+                ele = cJSON_CreateString(ORCH_VER);
+                if (!ele) {
+                    fprintf(stderr, "ERR,RPT_INV,alloc /payload/vehicleVersion/orchestrator object fail\n");
+                    goto DONE;
+                }
+                cJSON_AddItemToObject(vehicle, "orchestrator", ele);
+            }
+        }
     }
-    cJSON_AddItemToObject(root, "orchestrator", ele);
-    ///orchestrator/inventory
+    //         "inventory": [
     inv = cJSON_CreateArray();
     if (!inv) {
         fprintf(stderr, "ERR,RPT_INV,alloc inv array fail\n");
         goto DONE;
     }
-    cJSON_AddItemToObject(root, "inventory", inv);
+    cJSON_AddItemToObject(payload, "inventory", inv);
     for (int i = 0; i < BS_MAX_DEVICE_APP_NUM; ++i) {
         struct bs_device_app* app = &g_ctx->apps[i];
         if (!app->slot_used || !app->dev_id[0])
@@ -616,12 +715,9 @@ static void orch_report_inventory()
         goto DONE;
     }
 
+    invoke_dlc_api_rpt_inv(msg);
 
-    mg_printf(g_ctx->tlc, "%s", "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n");
-    mg_printf_http_chunk(g_ctx->tlc, msg);
-    mg_send_http_chunk(g_ctx->tlc, "", 0); /* Send empty chunk, the end of response */
-
-    fprintf(stdout, "INFO,RPT_INV,<-,%d,%s\n\n", 200, msg);
+    fprintf(stdout, "INFO,RPT_INV,<-,%s\n\n", msg);
 
 DONE:
     if (root)
