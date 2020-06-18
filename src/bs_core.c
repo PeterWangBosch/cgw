@@ -77,6 +77,7 @@ void bs_init_device_app(struct bs_device_app *app)
   app->job.internal_id = 0;
   app->job.internal_stat = 0;
   app->job.remote = NULL;
+  app->slot_used = false;
 }
 void bs_init_app_config(const char * filename)
 {
@@ -199,24 +200,6 @@ void bs_core_init_ctx()
 
   //init from config.ini
   bs_load_app_config(filename, g_ctx.apps, BS_MAX_DEVICE_APP_NUM);
-
-  //// TODO: just for NCT.
-  //bs_init_device_app(g_ctx.apps);
-  //strcpy(g_ctx.apps[0].dev_id, "WPC");
-  //g_ctx.apps[0].pkg_stat.type = BS_PKG_TYPE_CAN_ECU;
-  //g_ctx.apps[0].pkg_stat.stat = bs_pkg_stat_idle;
-  //strcpy(g_ctx.apps[0].pkg_stat.name, "/data/var/orchestrator/wpc.1.0.0");
-  //bs_init_device_app(g_ctx.apps);
-  //strcpy(g_ctx.apps[1].dev_id, "VDCM");
-  //g_ctx.apps[1].pkg_stat.type = BS_PKG_TYPE_ETH_ECU;
-  //g_ctx.apps[1].pkg_stat.stat = bs_pkg_stat_idle;
-  //bs_init_device_app(g_ctx.apps);
-  //strcpy(g_ctx.apps[2].dev_id, "WPC");
-  //g_ctx.apps[2].pkg_stat.type = BS_PKG_TYPE_CAN_ECU;
-  //g_ctx.apps[2].pkg_stat.stat = bs_pkg_stat_idle;
-  //strcpy(g_ctx.apps[2].pkg_stat.name, "/data/var/orchestrator/wpc.1.0.0");
-
-  //bs_save_app_config(filename, g_ctx.apps, BS_MAX_DEVICE_APP_NUM);
 
   g_ctx.cgw_stat = CGW_STAT_IDLE;
 }

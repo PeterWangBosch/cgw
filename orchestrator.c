@@ -483,91 +483,457 @@ static void dlc_msg_handler(struct mg_connection *nc, int ev, void *ev_data) {
     }
 }
 
+static struct bs_device_app* bs_core_ecu_online(struct mg_connection* nc, const char* ecu_ip)
+{
+    struct bs_context* g_ctx = bs_get_core_ctx();
+    struct bs_device_app* app = NULL;
+
+
+    fprintf(stdout, "INFO,ECU_ONLINE,%s\n", ecu_ip);
+
+    app = find_app_by_nc(nc, ecu_ip);
+
+    //first time online
+    //find a free app slot to store
+    if (!app) {
+        for (int i = 0; i < BS_MAX_DEVICE_APP_NUM; i++) {
+            if (!g_ctx->apps[i].slot_used) {
+                app = &(g_ctx->apps[i]);
+                app->slot_used = true;
+            }
+        }
+
+        if (!app) {
+            fprintf(stderr, 
+                "ERROR,ECU_ONLINE,no free app slot\n");
+            goto DONE;
+        }
+    }
+
+    //update lasted connection    
+    memcpy(app->job.ip_addr, ecu_ip, sizeof(app->job.ip_addr));
+    app->job.remote = nc;
+    app->job.internal_stat = ETH_STAT_IDLE;
+    //app->job.internal_id = gen_internal_id();
+
+DONE:
+    return (app);
+}
+
+static struct bs_device_app* bs_core_ecu_offline(struct mg_connection* nc, const char* ecu_ip)
+{
+    struct bs_device_app* app = NULL;
+
+
+    fprintf(stdout, "INFO,ECU_OFFLINE,%s\n", ecu_ip);
+
+    app = find_app_by_nc(nc, ecu_ip);
+    if (!app) {
+        fprintf(stderr,
+            "ERROR,ECU_OFFLINE,%s,no app find\n", ecu_ip);
+        goto DONE;
+    }
+    else
+    {
+        fprintf(stdout,
+            "ERROR,ECU_OFFLINE,%s,%s\n", ecu_ip, app->dev_id);
+    }
+
+    //update lasted connection    
+    app->job.remote = NULL;
+
+DONE:
+    return (app);
+}
+
+
+static int uti_cstr_to_jstr(const char* cstr, char* jbuf, int buf_size)
+{
+    int rc = 0;
+    int j_i = 0, c_i = 0;
+    int c_m = (int)(strlen(cstr));
+    int j_m = (int)(buf_size - 1);
+
+    for (; c_i < c_m;) {
+        if (cstr[c_i] == '\\' && c_i + 1 < c_m && cstr[c_i + 1] == 'n') {
+            c_i += 2;
+            continue;
+        }
+        if (cstr[c_i] == '\\' && c_i + 1 < c_m && cstr[c_i + 1] == '"') {
+            c_i += 1;
+            continue;
+        }
+
+        jbuf[j_i] = cstr[c_i];
+        j_i += 1;
+        c_i += 1;
+
+
+        if (c_i + 1 > c_m)
+            break;
+
+        if (j_i + 1 > j_m) {
+            if (c_i < c_m)
+                rc = -1;
+
+            break;
+        }
+    }
+    jbuf[j_i] = '\0';
+
+    return (rc);
+}
+
+static int eth_fsm_run_online(struct bs_device_app* app)
+{
+    const char* REQ = "{ \"node\":109,\"task\":\"REQUEST_VERSIONS\",\"category\":0,\"payload\":\"{}\", \"uuid\" : \"803953b3-9beb-11ea-aafa-24418ccef951\" }";
+    int rc = 0;
+
+
+    assert(app);
+    if (!app->job.remote) {
+        fprintf(stderr,
+            "ERROR,ETH_ONLINE,%s,app->remote == NULL\n",
+            app->job.ip_addr);
+
+        rc = -1;
+        goto DONE;
+    }
+
+    mg_send(app->job.remote, REQ, strlen(REQ));
+    fprintf(stdout,
+        "INFO,ETH_RUN_ONLINE,%s,->,%s\n",
+        app->job.ip_addr, REQ);
+DONE:
+
+    return (rc);
+}
+
+static int eth_fsm_run_req_ver_result(struct bs_device_app* app, 
+    struct cJSON* payload)
+{
+    int rc = 0;
+
+    struct cJSON* ver = NULL;
+    struct cJSON* vero = NULL;
+    struct cJSON* vers = NULL;
+
+    vers = cJSON_GetObjectItem(payload, "versions");
+    if (vers == NULL) {
+        fprintf(stderr,
+            "ERROR,RUN_VER_RLT,[/versions] not find\n");
+
+        rc = -1;
+        goto DONE;
+    }
+
+    if (cJSON_GetArraySize(vers) > BS_MAX_VER_NUM) {
+
+        fprintf(stderr,
+            "ERROR,RUN_VER_RLT,ver list size(%d) > core limit(%d)\n",
+            cJSON_GetArraySize(vers), BS_MAX_VER_NUM);
+
+        rc = -1;
+        goto DONE;
+    }
+
+    //TODO:require json to change?
+    //there is no way to get dev_id
+    if (app->dev_id[0] == 0) {
+        strcpy(app->dev_id, "VDCM");
+    }
+
+
+    int v = 0;
+    memset(app->dev_vers, 0, sizeof(app->dev_vers));
+    cJSON_ArrayForEach(vero, vers) {
+
+        ver = vero->child;
+        if (!cJSON_IsString(ver)) {
+            fprintf(stderr,
+                "ERROR,RUN_VER_RLT,versions[%d] is not string object\n", v);
+            rc = -1;
+            goto DONE;
+        }
+
+        SAFE_CPY_STR(app->dev_vers[v].soft_id, ver->string, BS_MAX_SOFT_ID_LEN);
+        SAFE_CPY_STR(app->dev_vers[v].soft_ver, ver->valuestring, BS_MAX_SOFT_VER_LEN);
+
+        ++v;
+    }
+
+DONE:
+
+    return (rc);
+}
+
+static const char* eth_job_stat_name(int stat)
+{
+    static const char* eth_job_stat_names[] = {
+        "IDLE",
+        "ONLINE",
+        "REQ_VER",
+        "REQ_VER_RESULT",
+    };
+    static char eth_job_stat_unk[16];
+
+    if (stat < 0 || stat > ETH_STAT_REQ_VER_RESULT) {
+
+        snprintf(eth_job_stat_unk, sizeof(eth_job_stat_unk), "UNK(%d)", stat);
+        return (eth_job_stat_unk);
+    }
+
+    return (eth_job_stat_names[stat]);
+}
+
+static void eth_fsm_drv_stat(struct bs_device_app* app, 
+    int new_stat, struct cJSON* payload)
+{
+    assert(app);
+    assert(new_stat == ETH_STAT_ONLINE ? true : NULL!=payload);
+
+    fprintf(stdout,
+        "INFO,DRV_STAT,%s,%s,%s,->,%s\n",
+        app->job.ip_addr, app->dev_id, 
+        eth_job_stat_name(app->job.internal_stat), eth_job_stat_name(new_stat));
+
+    switch (new_stat)
+    {
+    case ETH_STAT_ONLINE: {
+        if (0 == eth_fsm_run_online(app)) {
+            app->job.internal_stat = ETH_STAT_REQ_VER;
+        }
+    } break;
+    case ETH_STAT_REQ_VER_RESULT: {
+        if (0 == eth_fsm_run_req_ver_result(app, payload)) {
+            app->job.internal_stat = ETH_STAT_REQ_VER_RESULT;
+        }
+    } break;
+    default:
+        break;
+    }
+}
+
+
+
+static void eth_fsm_hdl_resp(struct bs_device_app* app, const char* msg)
+{
+    struct cJSON* root = NULL;
+    struct cJSON* task = NULL;
+    struct cJSON* payload = NULL;
+
+    char jstr[2048] = { 0 };
+
+
+    fprintf(stdout, "INFO,ETH_RSP,%s\n", msg);    
+
+    root = cJSON_Parse(msg);
+    if (!root) {
+        fprintf(stderr,
+            "ERROR,ETH_RSP,rsp parse fail: %s\n",
+            msg);
+
+        goto DONE;
+    }
+
+    payload = cJSON_GetObjectItem(root, "payload");
+    if (!payload) {
+        fprintf(stderr,
+            "ERROR,ETH_RSP,</payload> not find: %s\n",
+            msg);
+        payload = NULL;
+        goto DONE;
+    }
+
+    if (uti_cstr_to_jstr(payload->valuestring, jstr, sizeof(jstr))) {
+        fprintf(stderr,
+            "ERROR,ETH_RSP,payload msg too big =%d\n",
+            (int)strlen(payload->valuestring));
+
+        payload = NULL;
+        goto DONE;
+    }
+
+    payload = cJSON_Parse(jstr);
+    if (!payload) {
+        fprintf(stderr,
+            "ERROR,ETH_RSP,payload parse fail: %s\n",
+            jstr);
+
+        goto DONE;
+    }
+    
+
+    task = cJSON_GetObjectItem(root, "task");
+    if (!task) {
+        fprintf(stderr,
+            "ERROR,ETH_RSP,</task> not find: %s\n",
+            jstr);
+
+        goto DONE;
+    }
+    
+
+    if (strcmp(task->valuestring, "REQUEST_VERSIONS_RESULT") == 0) {
+        eth_fsm_drv_stat(app, ETH_STAT_REQ_VER_RESULT, payload);
+        goto DONE;
+    }
+
+DONE:
+    if (root)
+        cJSON_Delete(root);
+    if (payload)
+        cJSON_Delete(payload);
+}
+
+
+static void eth_msg_handler(struct mg_connection* nc, int ev, void* ev_data) {
+
+    (void)(nc);
+    (void)(ev);
+    (void)(ev_data);
+
+    struct mbuf* io = &nc->recv_mbuf;
+    struct bs_device_app* app = NULL;
+    char ecu_ip[32] = { 0 };
+
+    //use ecu ip to identify unique device
+    if (nc) {
+        if (mg_sock_addr_to_str(&(nc->sa), ecu_ip, sizeof(ecu_ip),
+            MG_SOCK_STRINGIFY_IP) <= 0) {
+
+            fprintf(stderr, "ERROR,ETH_HDL,mg_sock_addr_to_str fail\n");
+            return;
+        }
+    }
+    
+
+    switch (ev) {
+    case MG_EV_ACCEPT: {
+
+        app = bs_core_ecu_online(nc, ecu_ip);
+        if (app) {
+            eth_fsm_drv_stat(app, ETH_STAT_ONLINE, NULL);
+        }
+    }break;
+
+
+    case MG_EV_RECV: {
+
+        app = find_app_by_nc(nc, ecu_ip);
+        if (app) {
+            // first 4 bytes for length
+            eth_fsm_hdl_resp(app, &(io->buf[4]));
+        }
+        else
+        {
+            fprintf(stderr,
+                "ERROR,ETH_RSP,no app find for %s\n",
+                ecu_ip);
+        }
+
+        mbuf_remove(io, io->len);
+    } break;
+
+    case MG_EV_CLOSE:
+        bs_core_ecu_offline(nc, ecu_ip);
+        break;
+
+    default:
+        break;
+    }
+}
+
 //------------------------------------------------------------------
 // HTTP Thread
 //------------------------------------------------------------------
 
-int main(int argc, char *argv[]) {
-  struct mg_mgr mgr;
-  struct mg_connection *nc;
-  struct mg_bind_opts bind_opts;
-  const char *err_str;
+int main(int argc, char *argv[]) 
+{
+    struct mg_mgr mgr;
+    struct mg_connection* nc;
+    struct mg_bind_opts bind_opts;
+    const char* err_str;
 #if MG_ENABLE_SSL
-  const char *ssl_cert = NULL;
+    const char* ssl_cert = NULL;
 #endif
-  (void) argc;
-  (void) argv;
+    (void)argc;
+    (void)argv;
 
 
-  if (argc >= 2 && strcmp(argv[1], "-v") == 0) {
-    printf("====== Orchestrator =========\n");
-    printf("     Version: 1.0.0.0\n");
-    printf("=============================\n");
-    return 0;
-  }
+    if (argc >= 2 && strcmp(argv[1], "-v") == 0) {
+        printf("====== Orchestrator =========\n");
+        printf("     Version: 1.0.0.0\n");
+        printf("=============================\n");
+        return 0;
+    }
 
-  bs_core_init_ctx();
-  mg_start_thread(bs_core_thread, NULL);
-  mg_start_thread(bs_eth_installer_job_thread, bs_get_core_ctx());
-  mg_start_thread(bs_eth_installer_job_msg_thread, bs_get_core_ctx());
-  mg_mgr_init(&mgr, NULL);
+    bs_core_init_ctx();
+    mg_start_thread(bs_core_thread, NULL);
+    //mg_start_thread(bs_eth_installer_job_thread, bs_get_core_ctx());
+    //mg_start_thread(bs_eth_installer_job_msg_thread, bs_get_core_ctx());
+    mg_mgr_init(&mgr, NULL);
 
-  // in case we need listen to socket
-  //if (argc == 2 && strcmp(argv[1], "-o") == 0) {
-  //  printf("Start socket server\n");
-  //  mg_bind(&mgr, "8018", socket_ev_handler);
-  //  printf("Listen on port 8018\n");
-  //  for (;;) {
-  //    mg_mgr_poll(&mgr, 1000);
-  //  }
-  //  mg_mgr_free(&mgr);
-  //  return 1;
-  //}
-
-  /* Process command line options to customize HTTP server */
+    /* Process command line options to customize HTTP server */
 #if MG_ENABLE_SSL
-  if (strcmp(argv[i], "-s") == 0 && i + 1 < argc) {
-    ssl_cert = argv[++i];
-  }
+    if (strcmp(argv[i], "-s") == 0 && i + 1 < argc) {
+        ssl_cert = argv[++i];
+    }
 #endif
 
-  /* Set HTTP server options */
-  memset(&bind_opts, 0, sizeof(bind_opts));
-  bind_opts.error_string = &err_str;
+    /* Set HTTP server options */
+    memset(&bind_opts, 0, sizeof(bind_opts));
+    bind_opts.error_string = &err_str;
 #if MG_ENABLE_SSL
-  if (ssl_cert != NULL) {
-    bind_opts.ssl_cert = ssl_cert;
-  }
+    if (ssl_cert != NULL) {
+        bind_opts.ssl_cert = ssl_cert;
+    }
 #endif
-  nc = mg_bind_opt(&mgr, s_http_port, dlc_msg_handler, bind_opts);
-  if (nc == NULL) {
-    fprintf(stderr, "Starting server on port %s for DLC fail(%s)\n", s_http_port,
+    fprintf(stdout, "=== Start http&socket server ===\n\n");
+
+    nc = mg_bind_opt(&mgr, s_http_port, dlc_msg_handler, bind_opts);
+    if (nc == NULL) {
+        fprintf(stderr, "Starting server on port %s for DLC fail(%s)\n", s_http_port,
             *bind_opts.error_string);
-    exit(1);
-  } 
-  else {
-      fprintf(stdout, "Starting server on port %s for DLC\n", s_http_port);
-  }  
+        exit(1);
+    }
+    else {
+        fprintf(stdout, "Starting server on port %s for DLC\n", s_http_port);
+    }
+    // Register endpoints
+      //mg_register_http_endpoint(nc, "/upload", handle_upload MG_UD_ARG(NULL));
+    mg_register_http_endpoint(nc, "/test/live", handle_test_live MG_UD_ARG(NULL));
+    mg_register_http_endpoint(nc, "/test/vers", handle_test_vers MG_UD_ARG(NULL));
+    mg_register_http_endpoint(nc, "/pkg/new", handle_pkg_new MG_UD_ARG(NULL));
+    mg_register_http_endpoint(nc, "/pkg/stat", handle_pkg_stat MG_UD_ARG(NULL));
+    mg_register_http_endpoint(nc, "/pkg/inst", handle_pkg_inst MG_UD_ARG(NULL));
+    mg_register_http_endpoint(nc, "/tdr/run", handle_tdr_run MG_UD_ARG(NULL));
+    mg_register_http_endpoint(nc, "/tdr/stat", handle_tdr_stat MG_UD_ARG(NULL));
+    // Set up HTTP server parameters
+    mg_set_protocol_http_websocket(nc);
+
+    nc = mg_bind_opt(&mgr, bs_get_core_ctx()->eth_installer_port,
+        eth_msg_handler, bind_opts);
+    if (nc == NULL) {
+        fprintf(stderr, 
+            "Starting server on port %s for ETH fail(%s)\n",
+            bs_get_core_ctx()->eth_installer_port,
+            *bind_opts.error_string);
+        exit(1);
+    }
+    else {
+        fprintf(stdout,
+            "Starting server on port %s for ETH\n",
+            bs_get_core_ctx()->eth_installer_port);
+    }
 
 
-  // Register endpoints
-  //mg_register_http_endpoint(nc, "/upload", handle_upload MG_UD_ARG(NULL));
-  mg_register_http_endpoint(nc, "/test/live", handle_test_live MG_UD_ARG(NULL));
-  mg_register_http_endpoint(nc, "/test/vers", handle_test_vers MG_UD_ARG(NULL));
-  mg_register_http_endpoint(nc, "/pkg/new", handle_pkg_new MG_UD_ARG(NULL));
-  mg_register_http_endpoint(nc, "/pkg/stat", handle_pkg_stat MG_UD_ARG(NULL));
-  mg_register_http_endpoint(nc, "/pkg/inst", handle_pkg_inst MG_UD_ARG(NULL));
-  mg_register_http_endpoint(nc, "/tdr/run", handle_tdr_run MG_UD_ARG(NULL));
-  mg_register_http_endpoint(nc, "/tdr/stat", handle_tdr_stat MG_UD_ARG(NULL));
-  // Set up HTTP server parameters
-  mg_set_protocol_http_websocket(nc);
+    for (;;) {
+        mg_mgr_poll(&mgr, 1000);
+    }
 
-  for (;;) {
-    mg_mgr_poll(&mgr, 1000);
-  }
+    bs_core_exit_ctx();
+    mg_mgr_free(&mgr);
 
-  bs_core_exit_ctx();
-  mg_mgr_free(&mgr);
-
-  return 0;
+    return 0;
 }

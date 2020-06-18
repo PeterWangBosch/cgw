@@ -112,14 +112,16 @@ int bs_load_app_config(const char* file_name, bs_device_app_t* apps, int max_app
         j_app != NULL && app_i < max_app;
         app_i++, j_app = j_app->next) {
 
-        bs_device_app_t* app = &apps[app_i];
-        bs_init_device_app(app);
-
         if (!cJSON_IsObject(j_app)) {
             fprintf(stderr, "ERR:INIT_APP_CFG:config app is not a json_object\n");
             rc = JCFG_ERR_BAD_DOCUMENT;
             goto DONE;
         }
+
+        bs_device_app_t* app = &apps[app_i];
+        bs_init_device_app(app);
+        app->slot_used = true;
+
 
         struct cJSON* j_itm;
         for (j_itm = j_app->child; j_itm != NULL; j_itm = j_itm->next) {

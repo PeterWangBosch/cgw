@@ -45,9 +45,12 @@ struct bs_app_pkg_stat {
   const char *stat;
 };
 
-typedef enum bs_eth_job_stat_e{
+typedef enum bs_eth_inst_stat_e{
     ETH_STAT_IDLE = 0,
-}bs_eth_job_stat_t;
+    ETH_STAT_ONLINE,
+    ETH_STAT_REQ_VER,
+    ETH_STAT_REQ_VER_RESULT,
+}bs_eth_inst_stat_t;
 
 struct bs_app_intaller_job {
   char ip_addr[32];
