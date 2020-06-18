@@ -201,6 +201,15 @@ void bs_core_init_ctx()
   //init from config.ini
   bs_load_app_config(filename, g_ctx.apps, BS_MAX_DEVICE_APP_NUM);
 
+  //TODO:HOW TO DISCOVERY IN REAL WORK
+  //0:as WPC
+  struct bs_device_app* app = &g_ctx.apps[0];
+  app->slot_used = true;
+  app->pkg_stat.type = BS_PKG_TYPE_CAN_ECU;
+  strcpy(app->dev_id, "WPC");
+  strcpy(app->dev_vers[0].soft_id, "WPC1.0.0");
+  strcpy(app->dev_vers[0].soft_ver, "1.0.0");
+
   g_ctx.cgw_stat = CGW_STAT_IDLE;
 }
 

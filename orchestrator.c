@@ -9,6 +9,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 
+#include "verison.h"
 #include "cJSON/cJSON.h"
 #include "mongoose/mongoose.h"
 #include "src/bs_core.h"
@@ -483,6 +484,152 @@ static void dlc_msg_handler(struct mg_connection *nc, int ev, void *ev_data) {
     }
 }
 
+static void orch_report_inventory()
+{
+    char* msg = NULL;
+    cJSON* root = NULL;
+    cJSON* ele = NULL;
+    cJSON* inv = NULL;
+    cJSON* ecu = NULL;
+    cJSON* ver = NULL;
+    cJSON* vers = NULL;
+
+    struct bs_context* g_ctx = bs_get_core_ctx();
+    if (g_ctx->tlc == NULL) {
+        fprintf(stdout, "INFO,RPT_INV,<-,DLC not online\n");
+        return;
+    }
+
+    //
+    root = cJSON_CreateObject();
+    if (!root) {
+        fprintf(stderr, "ERR,RPT_INV,alloc json root object fail\n");
+        goto DONE;
+    }
+    ///orchestrator
+    ele = cJSON_CreateString(ORCH_VER" "ORCH_MAK);
+    if (!ele) {
+        fprintf(stderr, "ERR,RPT_INV,alloc orch ver object fail\n");
+        goto DONE;
+    }
+    cJSON_AddItemToObject(root, "orchestrator", ele);
+    ///orchestrator/inventory
+    inv = cJSON_CreateArray();
+    if (!inv) {
+        fprintf(stderr, "ERR,RPT_INV,alloc inv array fail\n");
+        goto DONE;
+    }
+    cJSON_AddItemToObject(root, "inventory", inv);
+    for (int i = 0; i < BS_MAX_DEVICE_APP_NUM; ++i) {
+        struct bs_device_app* app = &g_ctx->apps[i];
+        if (!app->slot_used || !app->dev_id[0])
+            continue;
+        /*
+        {
+            "ecu": "WPC",
+            "softwareList": [{
+                    "softwareId": "WPC",
+                    "version": "WPC_App_V1.0",
+                    "lastUpdated": "19000101 000000",
+                    "servicePack": "unknown",
+                    "campaign": "unknown"
+                }
+            ]
+        }
+        */
+
+        ecu = cJSON_CreateObject();
+        if (!ecu) {
+            fprintf(stderr, "ERR,RPT_INV,alloc ecu object fail\n");
+            goto DONE;
+        }
+
+        ele = cJSON_CreateString(app->dev_id);
+        if (!ele) {
+            fprintf(stderr, "ERR,RPT_INV,alloc ecu/dev_id string fail\n");
+            goto DONE;
+        }
+        cJSON_AddItemToObject(ecu, "ecu", ele);
+
+        vers = cJSON_CreateArray();
+        if (!vers) {
+            fprintf(stderr, "ERR,RPT_INV,alloc inv/vers array fail\n");
+            goto DONE;
+        }
+        cJSON_AddItemToObject(ecu, "softwareList", vers);
+
+        for (int v = 0; v < BS_MAX_VER_NUM; ++v) {
+            if (!app->dev_vers[v].soft_id[0])
+                break;
+
+            ver = cJSON_CreateObject();
+            if (!ver) {
+                fprintf(stderr, "ERR,RPT_INV,alloc inv/vers[%d] object fail\n", v);
+                goto DONE;
+            }
+            else
+            {
+                ele = cJSON_CreateString(app->dev_vers[v].soft_id);
+                if (!ele) {
+                    fprintf(stderr, "ERR,RPT_INV,alloc vers[%d]/softwareId string fail\n", v);
+                    goto DONE;
+                }
+                cJSON_AddItemToObject(ver, "softwareId", ele);
+                //
+                ele = cJSON_CreateString(app->dev_vers[v].soft_ver);
+                if (!ele) {
+                    fprintf(stderr, "ERR,RPT_INV,alloc vers[%d]/version string fail\n", v);
+                    goto DONE;
+                }
+                cJSON_AddItemToObject(ver, "version", ele);
+                //TODO:
+                ele = cJSON_CreateString("092230 20200618");
+                if (!ele) {
+                    fprintf(stderr, "ERR,RPT_INV,alloc vers[%d]/lastUpdated string fail\n", v);
+                    goto DONE;
+                }
+                cJSON_AddItemToObject(ver, "lastUpdated", ele);
+                //
+                ele = cJSON_CreateString("");
+                if (!ele) {
+                    fprintf(stderr, "ERR,RPT_INV,alloc vers[%d]/servicePack string fail\n", v);
+                    goto DONE;
+                }
+                cJSON_AddItemToObject(ver, "servicePack", ele);
+                //
+                ele = cJSON_CreateString("");
+                if (!ele) {
+                    fprintf(stderr, "ERR,RPT_INV,alloc vers[%d]/campaign string fail\n", v);
+                    goto DONE;
+                }
+                cJSON_AddItemToObject(ver, "campaign", ele);
+            }
+            //
+            cJSON_AddItemToArray(vers, ver);
+        }
+        cJSON_AddItemToArray(inv, ecu);
+    }
+
+    msg = cJSON_PrintUnformatted(root);
+    if (!msg) {
+        fprintf(stderr, "ERR,RPT_INV,cJSON_PrintUnformatted fail\n");
+        goto DONE;
+    }
+
+
+    mg_printf(g_ctx->tlc, "%s", "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n");
+    mg_printf_http_chunk(g_ctx->tlc, msg);
+    mg_send_http_chunk(g_ctx->tlc, "", 0); /* Send empty chunk, the end of response */
+
+    fprintf(stdout, "INFO,RPT_INV,<-,%d,%s\n\n", 200, msg);
+
+DONE:
+    if (root)
+        cJSON_Delete(root);
+    if (msg)
+        cJSON_free(msg);
+}
+
 static struct bs_device_app* bs_core_ecu_online(struct mg_connection* nc, const char* ecu_ip)
 {
     struct bs_context* g_ctx = bs_get_core_ctx();
@@ -513,6 +660,7 @@ static struct bs_device_app* bs_core_ecu_online(struct mg_connection* nc, const 
     //update lasted connection    
     memcpy(app->job.ip_addr, ecu_ip, sizeof(app->job.ip_addr));
     app->job.remote = nc;
+    app->pkg_stat.type = BS_PKG_TYPE_ETH_ECU;
     app->job.internal_stat = ETH_STAT_IDLE;
     //app->job.internal_id = gen_internal_id();
 
@@ -536,7 +684,7 @@ static struct bs_device_app* bs_core_ecu_offline(struct mg_connection* nc, const
     else
     {
         fprintf(stdout,
-            "ERROR,ECU_OFFLINE,%s,%s\n", ecu_ip, app->dev_id);
+            "INFO,ECU_OFFLINE,%s,%s\n", ecu_ip, app->dev_id);
     }
 
     //update lasted connection    
@@ -707,6 +855,7 @@ static void eth_fsm_drv_stat(struct bs_device_app* app,
     case ETH_STAT_REQ_VER_RESULT: {
         if (0 == eth_fsm_run_req_ver_result(app, payload)) {
             app->job.internal_stat = ETH_STAT_REQ_VER_RESULT;
+            orch_report_inventory();
         }
     } break;
     default:
