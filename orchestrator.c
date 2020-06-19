@@ -484,33 +484,69 @@ static void dlc_msg_handler(struct mg_connection *nc, int ev, void *ev_data) {
     }
 }
 
+static const char* mg_ev_name(int ev) {
+
+    static const char* ev_nc_name[] = {
+        "MG_EV_POLL", //#define MG_EV_POLL 0    /* Sent to each connection on each mg_mgr_poll() call */
+        "MG_EV_ACCEPT", //#define MG_EV_ACCEPT 1  /* New connection accepted. union socket_address * */
+        "MG_EV_CONNECT", //#define MG_EV_CONNECT 2 /* connect() succeeded or failed. int *  */
+        "MG_EV_RECV", //#define MG_EV_RECV 3    /* Data has been received. int *num_bytes */
+        "MG_EV_SEND", //#define MG_EV_SEND 4    /* Data has been written to a socket. int *num_bytes */
+        "MG_EV_CLOSE", //#define MG_EV_CLOSE 5   /* Connection is closed. NULL */
+        "MG_EV_TIMER", //#define MG_EV_TIMER 6   /* now >= conn->ev_timer_time. double * */
+    };
+    static const char* ev_http_name[] = {
+        "MG_EV_HTTP_REQUEST", //#define MG_EV_HTTP_REQUEST 100 /* struct http_message * */
+        "MG_EV_HTTP_REPLY", //#define MG_EV_HTTP_REPLY 101   /* struct http_message * */
+        "MG_EV_HTTP_CHUNK", //#define MG_EV_HTTP_CHUNK 102   /* struct http_message * */
+        "MG_EV_SSI_CALL", //#define MG_EV_SSI_CALL 105     /* char * */
+        "MG_EV_SSI_CALL_CTX", //#define MG_EV_SSI_CALL_CTX 106 /* struct mg_ssi_call_ctx * */
+    };
+
+
+    static char mg_unk[32];
+
+    if (ev >= MG_EV_POLL && ev <= MG_EV_TIMER) {
+        return (ev_nc_name[ev]);
+    }
+    else if (ev >= MG_EV_HTTP_REQUEST && ev <= MG_EV_SSI_CALL_CTX) {
+        return (ev_http_name[ev - MG_EV_HTTP_REQUEST]);
+    }
+    else
+    {
+        snprintf(mg_unk, sizeof(mg_unk) - 1, "MG_EV_UNK(%d)", ev);
+        return (mg_unk);
+    }
+}
+
 static void dlc_api_rpt_inv_handler(struct mg_connection* nc, int ev, void* ev_data) 
 {
     (void)(ev);
     (void)(ev_data);
 
-    if (ev == MG_EV_SEND) {
+    if (ev == MG_EV_CLOSE || ev == MG_EV_SEND || ev == MG_EV_TIMER) {
         assert(nc && nc->user_data);
 
-        *((bool*)(nc->user_data)) = true;
-    }    
+        *((int*)(nc->user_data)) = ev == MG_EV_SEND ? 1 : -1;
+        return;
+    }
 }
 
 
 static int invoke_dlc_api_rpt_inv(const char* msg)
 {
     int rc = 0;
-    bool going = true;
+    int api_return = 0;
 
     struct bs_context* g_ctx = bs_get_core_ctx();
     struct mg_connection* nc = NULL;
     struct mg_mgr mgr;
 
     char dlc_api[256] = { 0 };
-    snprintf(dlc_api, sizeof(dlc_api), "http://%s/stat/inventory",
+    snprintf(dlc_api, sizeof(dlc_api), "http://%s:8019/stat/inventory",
         g_ctx->tlc_ip);
 
-
+    fprintf(stdout, "INFO,RPT_INV, -> %s ...\n", dlc_api);
 
     mg_mgr_init(&mgr, NULL);
     nc = mg_connect_http(&mgr, MG_CB(dlc_api_rpt_inv_handler, NULL), dlc_api,
@@ -520,13 +556,17 @@ static int invoke_dlc_api_rpt_inv(const char* msg)
         fprintf(stderr, "ERR,RPT_INV,%s,session fail\n", dlc_api);
         goto DONE;
     }
-    nc->user_data = &going;
 
-    while (going) {
+    mg_set_timer(nc, mg_time() + 1.5);
+    nc->user_data = &api_return;
+
+    while (api_return == 0) {
         mg_mgr_poll(&mgr, 200);
     }
 
+
 DONE:
+    fprintf(stdout, "INFO,RPT_INV, -> %s done\n", dlc_api);
     mg_mgr_free(&mgr);
 
     return (rc);
@@ -581,6 +621,7 @@ static void orch_report_inventory()
             fprintf(stderr, "ERR,RPT_INV,alloc /payload object fail\n");
             goto DONE;
         }
+        cJSON_AddItemToObject(root, "payload", payload);
         {
             ele = cJSON_CreateString("HHFOTA-0.1");
             if (!ele) {
